@@ -46,7 +46,7 @@
 
 ### 待办事项提醒
 
-- 模板 ID：`5ly1Jv7aswWNmrRMDXgrcj2BKeywdH6evDst6OomB2c`
+- 模板 ID：`5Iy1Jv7aswWNmrRMDXgrcj2BKeywdH6evDst6OomB2c`
 - 模板编号：2983
 - 当前用途：学校通知自动提醒
 - 后续可评估用途：作业和计划提醒
