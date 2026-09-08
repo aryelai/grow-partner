@@ -1,0 +1,27 @@
+<view class="page settings-page" wx:if="{{family}}">
+  <view class="card family-card">
+    <view class="card-heading"><view><view class="child-name">{{family.childName}}<text wx:if="{{family.childNickname}}" class="nickname">（{{family.childNickname}}）</text></view><view class="muted">{{stageName}} {{family.grade}}年级 · {{family.className || '未填写班级'}}</view><view class="muted birthday">生日：{{birthdayText}}</view></view><button wx:if="{{isCreator}}" size="mini" class="ghost-button" bindtap="editFamily">编辑</button></view>
+    <view class="invite-row" wx:if="{{isCreator && inviteCodeText}}"><view><text class="field-label">家庭邀请码</text><text class="invite-code">{{inviteCodeText}}</text></view><button size="mini" class="ghost-button" bindtap="copyInviteCode">复制</button></view>
+    <view class="semester-row"><button data-offset="-1" bindtap="changeSemester" disabled="{{!isCreator}}">‹</button><view><text class="field-label">当前学期</text><text class="semester">{{family.currentSemester}}</text></view><button data-offset="1" bindtap="changeSemester" disabled="{{!isCreator}}">›</button></view>
+  </view>
+
+  <view class="card menu-card"><view class="menu-item" bindtap="goMembers"><text>家庭成员管理</text><text>›</text></view><view class="menu-item" bindtap="goSubjects"><text>科目管理</text><text>›</text></view></view>
+
+  <view class="card">
+    <view class="section-title">通知提醒</view>
+    <checkbox-group bindchange="onAdvanceChange"><label class="check"><checkbox value="1440" checked="{{advanceDay}}" color="#4A90D9" />提前1天</label><label class="check"><checkbox value="120" checked="{{advanceHours}}" color="#4A90D9" />提前2小时</label></checkbox-group>
+    <checkbox-group class="targets" bindchange="onTargetsChange"><label class="check"><checkbox value="father" checked="{{targetFather}}" color="#4A90D9" />爸爸</label><label class="check"><checkbox value="mother" checked="{{targetMother}}" color="#4A90D9" />妈妈</label><label class="check"><checkbox value="child" checked="{{targetChild}}" color="#4A90D9" />孩子</label></checkbox-group>
+    <view class="switch-row" wx:if="{{isCreator}}"><text>允许普通成员修改设置</text><switch checked="{{settings.allowMemberEditSettings}}" color="#4A90D9" bindchange="onMemberEditChange" /></view>
+  </view>
+
+  <view class="card ai-card">
+    <view class="section-title">AI 能力（预留）</view>
+    <view class="switch-row"><text>启用 AI</text><switch checked="{{false}}" disabled="{{true}}" /></view>
+    <view class="field"><text class="field-label">供应商</text><picker range="{{providerLabels}}" value="{{providerIndex}}" disabled="{{!isCreator}}" bindchange="onProviderChange"><view class="picker">{{providerLabels[providerIndex]}}</view></picker></view>
+    <view class="field"><text class="field-label">Base URL</text><input class="input" value="{{settings.aiBaseUrl}}" disabled="{{!isCreator}}" data-field="aiBaseUrl" bindinput="onSettingInput" placeholder="由服务端启用后生效" /></view>
+    <view class="field"><text class="field-label">模型名称</text><input class="input" value="{{settings.aiModel}}" disabled="{{!isCreator}}" data-field="aiModel" bindinput="onSettingInput" /></view>
+    <view class="security-tip">API Key 不在小程序端录入或回显；正式启用时应通过云环境安全配置注入。</view>
+  </view>
+  <button class="primary-button save" loading="{{saving}}" disabled="{{saving || !canEditSettings}}" bindtap="save">保存设置</button>
+  <view class="about">成长搭档 v1.0.0</view>
+</view>

@@ -1,0 +1,38 @@
+<view class="page">
+  <view class="card">
+    <view class="field"><text class="field-label">学期</text><view class="picker fixed">{{form.semester}}</view></view>
+    <view class="field">
+      <text class="field-label">科目 *</text>
+      <scroll-view scroll-x="{{true}}" class="subject-scroll"><view class="subject-row"><view wx:for="{{subjects}}" wx:key="*this" class="tag {{form.subject === item ? 'active' : ''}}" data-value="{{item}}" bindtap="selectSubject">{{item}}</view></view></scroll-view>
+    </view>
+    <view class="field"><text class="field-label">主题 *</text><input class="input" maxlength="50" value="{{form.title}}" data-field="title" bindinput="onInput" placeholder="例如：数学练习册 P25-27" /></view>
+    <view class="field"><text class="field-label">详细内容</text><textarea class="textarea" maxlength="2000" value="{{form.content}}" data-field="content" bindinput="onInput" placeholder="记录题目范围、完成方式等" /></view>
+    <view class="field"><text class="field-label">附加要求</text><input class="input" maxlength="100" value="{{form.extraRequirement}}" data-field="extraRequirement" bindinput="onInput" placeholder="例如：明天要交" /></view>
+
+    <view class="switch-row"><text>标记为重要</text><switch color="#4A90D9" checked="{{form.isImportant}}" data-field="isImportant" bindchange="onSwitch" /></view>
+    <view class="switch-row"><text>设置截止时间</text><switch color="#4A90D9" checked="{{form.hasDeadline}}" data-field="hasDeadline" bindchange="onSwitch" /></view>
+    <view class="deadline-row" wx:if="{{form.hasDeadline}}">
+      <picker mode="date" value="{{deadlineDate}}" bindchange="onDeadlineDate"><view class="picker">{{deadlineDate}}</view></picker>
+      <picker mode="time" value="{{deadlineTime}}" bindchange="onDeadlineTime"><view class="picker">{{deadlineTime}}</view></picker>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">附件</view>
+    <view class="media-grid">
+      <view class="media-item" wx:for="{{form.images}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /><text class="remove" data-type="images" data-index="{{index}}" bindtap="removeMedia">×</text></view>
+      <view class="media-item video" wx:for="{{form.videos}}" wx:key="*this">视频<text class="remove" data-type="videos" data-index="{{index}}" bindtap="removeMedia">×</text></view>
+      <button class="media-add" bindtap="chooseMedia" disabled="{{uploading}}">{{uploading ? '上传中' : '+ 图片/视频'}}</button>
+    </view>
+    <view class="link-row"><input class="input" value="{{linkInput}}" bindinput="onLinkInput" placeholder="https:// 开头的链接" /><button size="mini" bindtap="addLink">添加</button></view>
+    <view class="list-item" wx:for="{{form.links}}" wx:key="*this"><text class="link-text">{{item}}</text><text class="remove-text" data-index="{{index}}" bindtap="removeLink">删除</text></view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">额外标签</view>
+    <view class="link-row"><input class="input" maxlength="10" value="{{tagInput}}" bindinput="onTagInput" bindconfirm="addTag" confirm-type="done" placeholder="输入后点添加，最多10个" /><button size="mini" bindtap="addTag">添加</button></view>
+    <view><text class="tag removable" wx:for="{{form.extraTags}}" wx:key="*this" data-index="{{index}}" bindtap="removeTag">{{item}} ×</text></view>
+  </view>
+
+  <button class="primary-button save-button" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="save">保存作业</button>
+</view>

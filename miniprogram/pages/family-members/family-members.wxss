@@ -1,0 +1,8 @@
+.member { display: flex; align-items: center; }
+.member-avatar { width: 88rpx; height: 88rpx; border-radius: 50%; background: #EEF1F5; }
+.avatar-text { color: var(--primary); text-align: center; line-height: 88rpx; }
+.member-main { flex: 1; margin-left: 22rpx; }
+.mini-danger, .reject { color: var(--danger); background: #FFF2F0; }
+.requests-title { margin-top: 48rpx; }
+.request-actions { display: flex; justify-content: flex-end; gap: 16rpx; margin-top: 24rpx; }
+.approve { color: #fff; background: var(--primary); }

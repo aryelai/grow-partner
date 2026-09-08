@@ -1,0 +1,17 @@
+<view class="page" wx:if="{{habit}}">
+  <view class="card habit-summary"><view class="summary-title">{{habit.name}}</view><view class="muted">连续打卡 {{streak}} 天 · 累计积分 {{totalPoints}}</view><view class="description">{{habit.description}}</view></view>
+  <view class="card calendar-card">
+    <view class="month-nav"><button data-offset="-1" bindtap="changeMonth">‹</button><text>{{month}}</text><button data-offset="1" bindtap="changeMonth">›</button></view>
+    <view class="weekdays"><text wx:for="{{weekdays}}" wx:key="*this">{{item}}</text></view>
+    <view class="days"><view class="day blank" wx:for="{{leadingBlanks}}" wx:key="*this"></view><view class="day {{item.status}} {{item.isToday ? 'today' : ''}}" wx:for="{{calendarDays}}" wx:key="date"><text>{{item.day}}</text><text class="mark">{{item.mark}}</text></view></view>
+  </view>
+  <view class="card checkin-card">
+    <view class="section-title">今日打卡</view>
+    <checkbox-group bindchange="onItemsChange"><label class="check-item" wx:for="{{todayItems}}" wx:key="name"><checkbox value="{{item.name}}" checked="{{item.done}}" color="#27AE60" /><text>{{item.name}}</text><text wx:if="{{!item.required}}" class="muted">（选做）</text></label></checkbox-group>
+    <button class="ghost-button photo-button" bindtap="choosePhoto" disabled="{{uploading}}">{{photo ? '重新上传照片' : '上传打卡照片'}}</button>
+    <image wx:if="{{photo}}" class="photo" src="{{photo}}" mode="aspectFill" />
+    <textarea class="textarea note" maxlength="300" placeholder="记录今天的感受" value="{{note}}" bindinput="onNoteInput" />
+    <button class="primary-button" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="checkIn">保存今日打卡</button>
+  </view>
+  <button wx:if="{{canManage}}" class="danger-button remove-button" bindtap="remove">停用此习惯</button>
+</view>

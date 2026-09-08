@@ -1,0 +1,19 @@
+<view class="page">
+  <view class="card">
+    <view class="field"><text class="field-label">标题 *</text><input class="input" maxlength="80" value="{{form.title}}" data-field="title" bindinput="onInput" /></view>
+    <view class="field"><text class="field-label">来源</text><input class="input" maxlength="60" value="{{form.source}}" data-field="source" bindinput="onInput" placeholder="例如：班主任-王老师" /></view>
+    <view class="field"><text class="field-label">分类</text><view><text wx:for="{{categories}}" wx:key="value" class="tag {{form.category === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</text></view></view>
+    <view class="field"><text class="field-label">内容</text><textarea class="textarea" maxlength="3000" value="{{form.content}}" data-field="content" bindinput="onInput" /></view>
+    <button class="ghost-button" bindtap="chooseImages" disabled="{{uploading}}">{{uploading ? '上传中' : '添加图片（最多9张）'}}</button>
+    <view class="image-grid"><view class="image-wrap" wx:for="{{form.images}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /><text data-index="{{index}}" bindtap="removeImage">×</text></view></view>
+  </view>
+  <view class="card">
+    <view class="switch-row"><text>定时提醒</text><switch color="#4A90D9" checked="{{reminderEnabled}}" bindchange="toggleReminder" /></view>
+    <view wx:if="{{reminderEnabled}}">
+      <view class="deadline-row"><picker mode="date" value="{{remindDate}}" bindchange="onRemindDate"><view class="picker">{{remindDate}}</view></picker><picker mode="time" value="{{remindTime}}" bindchange="onRemindTime"><view class="picker">{{remindTime}}</view></picker></view>
+      <checkbox-group bindchange="onAdvanceChange"><label class="check"><checkbox value="1440" checked="{{advanceDay}}" />提前1天</label><label class="check"><checkbox value="120" checked="{{advanceHours}}" />提前2小时</label></checkbox-group>
+    </view>
+  </view>
+  <button class="primary-button save" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="save">保存通知</button>
+  <button wx:if="{{id}}" class="danger-button remove-button" bindtap="remove">删除通知</button>
+</view>

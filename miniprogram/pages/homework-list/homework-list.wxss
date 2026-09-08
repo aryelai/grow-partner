@@ -1,0 +1,30 @@
+.homework-page { padding-top: 0; }
+.filter-panel { position: sticky; top: 0; z-index: 5; margin: 0 -24rpx 24rpx; padding: 18rpx 24rpx 24rpx; background: rgba(245, 246, 250, 0.96); }
+.semester-switcher { display: flex; align-items: center; justify-content: center; margin-bottom: 18rpx; }
+.semester-arrow { width: 80rpx; height: 64rpx; padding: 0; color: var(--primary); background: transparent; font-size: 52rpx; line-height: 58rpx; }
+.semester-value { min-width: 180rpx; text-align: center; font-size: 34rpx; font-weight: 600; }
+.subject-scroll { width: 100%; white-space: nowrap; }
+.subject-row { display: inline-flex; padding-bottom: 8rpx; }
+.status-row { display: flex; margin: 12rpx 0; border-radius: 14rpx; background: #E8ECF1; }
+.status-item { flex: 1; padding: 14rpx; border-radius: 14rpx; text-align: center; color: var(--text-light); }
+.status-item.active { color: var(--primary); background: #fff; font-weight: 600; box-shadow: 0 2rpx 8rpx rgba(44, 62, 80, 0.08); }
+.search-box { display: flex; align-items: center; padding: 0 22rpx; border-radius: 14rpx; background: #fff; color: var(--gray); }
+.search-input { flex: 1; height: 76rpx; margin-left: 14rpx; }
+.homework-card.completed { opacity: 0.62; }
+.homework-card.completed .homework-title { text-decoration: line-through; }
+.title-row { display: flex; align-items: baseline; flex-wrap: wrap; line-height: 1.55; }
+.important { margin-right: 8rpx; color: #F4B400; }
+.deadline-icon { margin-right: 8rpx; color: var(--danger); }
+.homework-title { font-size: 32rpx; font-weight: 600; }
+.extra, .overdue { color: var(--danger); }
+.extra { margin-left: 6rpx; }
+.meta { margin-top: 14rpx; color: var(--text-light); font-size: 23rpx; }
+.tags { margin-top: 16rpx; }
+.small-tag, .media-badge { display: inline-block; margin: 0 10rpx 8rpx 0; padding: 6rpx 14rpx; border-radius: 8rpx; background: #F0F4F8; color: var(--text-light); font-size: 21rpx; }
+.media-row { display: flex; align-items: center; margin-top: 14rpx; }
+.thumb { width: 100rpx; height: 100rpx; margin-right: 10rpx; border-radius: 10rpx; }
+.card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 22rpx; padding-top: 18rpx; border-top: 2rpx solid var(--border); }
+.state { color: var(--warning); }
+.state.done { color: var(--success); }
+.toggle-button { color: var(--primary); background: var(--primary-light); }
+.load-more { padding: 24rpx; color: var(--text-light); text-align: center; font-size: 22rpx; }

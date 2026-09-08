@@ -1,0 +1,5 @@
+.task-edit { display: flex; align-items: center; margin-bottom: 16rpx; }
+.task-edit .input { flex: 1; }
+.priority-picker .picker { padding: 20rpx 12rpx; text-align: center; }
+.priority-picker { width: 150rpx; margin-left: 12rpx; }.delete { width: 70rpx; margin-left: 12rpx; color: var(--danger); text-align: right; font-size: 23rpx; }
+.save { margin-top: 24rpx; }.remove-button { margin-top: 18rpx; margin-bottom: 60rpx; }

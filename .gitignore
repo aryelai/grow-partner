@@ -1,0 +1,23 @@
+.DS_Store
+**/.DS_Store
+
+# 本地与敏感配置
+.env
+.env.*
+!.env.example
+project.private.config.json
+
+# 依赖与构建产物
+node_modules/
+miniprogram_npm/
+*.log
+
+# devres 本机安装状态与生成资源
+.agents/
+.claude/
+.devres/state.json
+.devres/backups/
+.devres/snapshots/
+.devres/docs/
+.devres/reports/
+.devres/rules/

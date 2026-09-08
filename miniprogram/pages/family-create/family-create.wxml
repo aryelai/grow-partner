@@ -1,0 +1,13 @@
+<view class="page">
+  <view class="card">
+    <view class="section-title">孩子档案</view>
+    <view class="field"><text class="field-label">孩子姓名 *</text><input class="input" maxlength="20" value="{{form.childName}}" data-field="childName" bindinput="onInput" placeholder="请输入真实姓名" /></view>
+    <view class="field"><text class="field-label">孩子昵称</text><input class="input" maxlength="20" value="{{form.childNickname}}" data-field="childNickname" bindinput="onInput" placeholder="家庭中的日常称呼" /></view>
+    <view class="field"><text class="field-label">生日 *</text><picker mode="date" value="{{form.childBirthday}}" end="{{today}}" bindchange="onBirthdayChange"><view class="picker">{{form.childBirthday || '请选择生日'}}</view></picker></view>
+    <view class="field"><text class="field-label">学段 *</text><picker range="{{stageLabels}}" value="{{stageIndex}}" bindchange="onStageChange"><view class="picker">{{stageLabels[stageIndex]}}</view></picker></view>
+    <view class="field"><text class="field-label">年级 *</text><picker range="{{gradeOptions}}" value="{{gradeIndex}}" bindchange="onGradeChange"><view class="picker">{{gradeOptions[gradeIndex]}}年级</view></picker></view>
+    <view class="field"><text class="field-label">班级名称</text><input class="input" maxlength="30" value="{{form.className}}" data-field="className" bindinput="onInput" placeholder="例如：初一(3)班" /></view>
+    <view class="field"><text class="field-label">您与孩子的关系 *</text><picker range="{{relationLabels}}" value="{{relationIndex}}" bindchange="onRelationChange"><view class="picker">{{relationLabels[relationIndex]}}</view></picker></view>
+    <button class="primary-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">创建并进入家庭</button>
+  </view>
+</view>

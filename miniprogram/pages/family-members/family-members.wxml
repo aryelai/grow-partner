@@ -1,0 +1,23 @@
+<view class="page">
+  <view class="section-title">家庭成员</view>
+  <view class="card member" wx:for="{{members}}" wx:key="_id">
+    <image wx:if="{{item.avatar}}" class="member-avatar" src="{{item.avatar}}" mode="aspectFill" />
+    <view wx:else class="member-avatar avatar-text">{{item.avatarText}}</view>
+    <view class="member-main"><view>{{item.nickname || item.relationName}}</view><view class="muted">{{item.relationName}} · {{item.roleName}}</view></view>
+    <button wx:if="{{isCreator && item.role !== 'creator'}}" class="mini-danger" size="mini" data-id="{{item._id}}" bindtap="removeMember">移除</button>
+  </view>
+  <view class="empty" wx:if="{{!members.length}}">暂无家庭成员</view>
+
+  <block wx:if="{{isCreator}}">
+    <view class="section-title requests-title">待处理申请</view>
+    <view class="card" wx:for="{{requests}}" wx:key="_id">
+      <view>{{item.applicantName}} · {{item.relationName}}</view>
+      <view class="muted">申请于 {{item.createdAtText}}</view>
+      <view class="request-actions">
+        <button class="reject" size="mini" data-id="{{item._id}}" data-approved="{{false}}" bindtap="review">拒绝</button>
+        <button class="approve" size="mini" data-id="{{item._id}}" data-approved="{{true}}" bindtap="review">批准</button>
+      </view>
+    </view>
+    <view class="empty" wx:if="{{!requests.length}}">暂无待处理申请</view>
+  </block>
+</view>

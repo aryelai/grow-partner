@@ -1,0 +1,12 @@
+<view class="page notice-page">
+  <scroll-view scroll-x="{{true}}" class="category-scroll"><view class="category-row"><view wx:for="{{categories}}" wx:key="value" class="tag {{category === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</view></view></scroll-view>
+  <view class="search-box">⌕<input placeholder="搜索通知标题" value="{{keyword}}" bindinput="onSearchInput" /></view>
+  <view class="card notice-card" wx:for="{{items}}" wx:key="_id" data-id="{{item._id}}" bindtap="edit">
+    <view class="notice-title"><text class="notice-icon">告</text>{{item.title}}<text wx:if="{{item.remindTime}}" class="remind">◷</text></view>
+    <view class="notice-content" wx:if="{{item.content}}">{{item.content}}</view>
+    <view class="meta">{{item.categoryName}} · {{item.source || '未填写来源'}} · {{item.createdAtText}}</view>
+  </view>
+  <view class="empty" wx:if="{{!loading && !items.length}}">暂无通知</view>
+  <view class="load-more" wx:if="{{loading}}">加载中…</view>
+  <button class="fab" bindtap="create">＋</button>
+</view>

@@ -1,0 +1,44 @@
+<view class="page homework-page">
+  <view class="filter-panel">
+    <view class="semester-switcher">
+      <button class="semester-arrow" data-offset="-1" bindtap="changeSemester">‹</button>
+      <view class="semester-value">{{semester}}</view>
+      <button class="semester-arrow" data-offset="1" bindtap="changeSemester">›</button>
+    </view>
+    <scroll-view class="subject-scroll" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
+      <view class="subject-row">
+        <view wx:for="{{subjects}}" wx:key="*this" class="tag {{selectedSubject === item ? 'active' : ''}}" data-value="{{item}}" bindtap="selectSubject">{{item}}</view>
+      </view>
+    </scroll-view>
+    <view class="status-row">
+      <view wx:for="{{statuses}}" wx:key="value" class="status-item {{status === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectStatus">{{item.label}}</view>
+    </view>
+    <view class="search-box">⌕<input class="search-input" placeholder="搜索作业主题" value="{{keyword}}" bindinput="onSearchInput" /></view>
+  </view>
+
+  <view class="homework-list">
+    <view class="card homework-card {{homework.isCompleted ? 'completed' : ''}}" wx:for="{{items}}" wx:for-item="homework" wx:key="_id" data-id="{{homework._id}}" bindtap="openDetail">
+      <view class="title-row">
+        <text wx:if="{{homework.isImportant}}" class="important">★</text>
+        <text wx:if="{{homework.hasDeadline}}" class="deadline-icon">◷</text>
+        <text class="homework-title">{{homework.title}}</text>
+        <text wx:if="{{homework.extraRequirement}}" class="extra">（{{homework.extraRequirement}}）</text>
+      </view>
+      <view class="meta">{{homework.subject}} · 录入：{{homework.createdByName}}<text wx:if="{{homework.hasDeadline}}" class="{{homework.isOverdue ? 'overdue' : ''}}"> · 截止：{{homework.deadlineText}}</text></view>
+      <view class="tags" wx:if="{{homework.extraTags.length}}"><text class="small-tag" wx:for="{{homework.extraTags}}" wx:for-item="tagItem" wx:key="*this">{{tagItem}}</text></view>
+      <view class="media-row" wx:if="{{homework.images.length || homework.videos.length || homework.links.length}}">
+        <image class="thumb" wx:for="{{homework.images}}" wx:for-item="imageUrl" wx:key="*this" src="{{imageUrl}}" mode="aspectFill" data-url="{{imageUrl}}" data-urls="{{homework.images}}" catchtap="previewImage" />
+        <text class="media-badge" wx:if="{{homework.videos.length}}">视频 1</text>
+        <text class="media-badge" wx:if="{{homework.links.length}}">链接 {{homework.links.length}}</text>
+      </view>
+      <view class="card-footer">
+        <text class="state {{homework.isCompleted ? 'done' : ''}}">{{homework.isCompleted ? '✓ 已完成' : '● 未完成'}}</text>
+        <button class="toggle-button" size="mini" data-id="{{homework._id}}" data-completed="{{homework.isCompleted}}" catchtap="toggleCompleted">{{homework.isCompleted ? '取消完成' : '标记完成'}}</button>
+      </view>
+    </view>
+    <view class="empty" wx:if="{{!loading && !items.length}}">当前筛选条件下没有作业</view>
+    <view class="load-more" wx:if="{{loading}}">加载中…</view>
+    <view class="load-more" wx:if="{{!loading && items.length && !hasMore}}">已加载全部</view>
+  </view>
+  <button class="fab" bindtap="createHomework">＋</button>
+</view>

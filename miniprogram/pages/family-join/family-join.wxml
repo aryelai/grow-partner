@@ -1,0 +1,15 @@
+<view class="page">
+  <view class="card">
+    <view class="section-title">查找家庭</view>
+    <view class="field"><text class="field-label">家庭邀请码</text><input class="input invite-input" maxlength="9" value="{{inviteCode}}" bindinput="onInviteCodeInput" placeholder="例如：ABCD-EFGH" /></view>
+    <button class="ghost-button" loading="{{searching}}" disabled="{{searching}}" bindtap="search">搜索家庭</button>
+  </view>
+
+  <view class="card" wx:if="{{family}}">
+    <view class="family-name">{{family.childName}}的家庭</view>
+    <view class="muted">昵称：{{family.childNickname || '未填写'}}</view>
+    <view class="muted">班级：{{family.className || '未填写'}}</view>
+    <view class="field relation-field"><text class="field-label">您与孩子的关系</text><picker range="{{relationLabels}}" value="{{relationIndex}}" bindchange="onRelationChange"><view class="picker">{{relationLabels[relationIndex]}}</view></picker></view>
+    <button class="primary-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="apply">提交加入申请</button>
+  </view>
+</view>

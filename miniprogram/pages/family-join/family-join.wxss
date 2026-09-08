@@ -1,0 +1,4 @@
+.family-name { margin-bottom: 18rpx; font-size: 36rpx; font-weight: 600; }
+.invite-input { letter-spacing: 4rpx; text-transform: uppercase; }
+.muted { margin-top: 10rpx; }
+.relation-field { margin-top: 30rpx; }

@@ -1,0 +1,4 @@
+{
+  "desc": "成长搭档页面索引配置",
+  "rules": [{ "action": "allow", "page": "*" }]
+}

@@ -1,0 +1,11 @@
+.category-tabs { display: flex; margin-bottom: 24rpx; padding: 8rpx; border-radius: 16rpx; background: #E8ECF1; }
+.category { flex: 1; padding: 14rpx; border-radius: 12rpx; text-align: center; color: var(--text-light); }
+.category.active { color: var(--primary); background: #fff; font-weight: 600; }
+.habit-header { display: flex; align-items: center; justify-content: space-between; }
+.habit-icon { display: inline-block; width: 54rpx; height: 54rpx; margin-right: 14rpx; border-radius: 16rpx; color: #fff; background: var(--primary); text-align: center; line-height: 54rpx; }
+.habit-name { font-size: 32rpx; font-weight: 600; }
+.streak { color: var(--warning); font-size: 23rpx; }
+.description { margin: 18rpx 0; color: var(--text-light); line-height: 1.6; }
+.progress-row { display: flex; align-items: center; gap: 16rpx; color: var(--text-light); font-size: 22rpx; }
+.progress-track { flex: 1; height: 14rpx; border-radius: 8rpx; background: #E8ECF1; overflow: hidden; }
+.progress-value { height: 100%; border-radius: 8rpx; background: linear-gradient(90deg, #4A90D9, #27AE60); }

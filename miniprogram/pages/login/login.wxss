@@ -1,0 +1,12 @@
+.login-page { min-height: 100vh; padding: 100rpx 36rpx 40rpx; box-sizing: border-box; background: linear-gradient(180deg, #EAF3FC 0%, #F5F6FA 48%); }
+.brand { margin-bottom: 64rpx; text-align: center; }
+.brand-mark { width: 112rpx; height: 112rpx; margin: 0 auto 24rpx; border-radius: 32rpx; color: #fff; background: #4A90D9; font-size: 58rpx; line-height: 112rpx; box-shadow: 0 16rpx 32rpx rgba(74, 144, 217, 0.3); }
+.brand-title { font-size: 48rpx; font-weight: 700; }
+.brand-subtitle { margin-top: 12rpx; color: var(--text-light); }
+.profile-card, .family-choice { padding: 40rpx; }
+.avatar-button { width: 148rpx; height: 148rpx; padding: 0; border-radius: 50%; background: var(--primary-light); }
+.avatar { width: 100%; height: 100%; border-radius: 50%; }
+.avatar-placeholder { color: var(--primary); font-size: 24rpx; line-height: 148rpx; }
+.nickname-input { margin: 36rpx 0 24rpx; text-align: center; }
+.register-button, .choice-button { margin-top: 24rpx; }
+.privacy-note, .pending-tip { margin-top: 22rpx; color: var(--text-light); text-align: center; font-size: 22rpx; line-height: 1.6; }

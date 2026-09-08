@@ -1,0 +1,87 @@
+commands:
+  build:
+    reason: 原生微信小程序由微信开发者工具编译，当前没有独立 CLI 构建命令
+    status: notApplicable
+  development:
+    entries:
+      - command: /Applications/wechatwebdevtools.app/Contents/MacOS/cli open --project .
+        purpose: 使用微信开发者工具打开当前小程序项目
+        verify: 微信开发者工具成功载入项目且模拟器完成编译
+    status: configured
+  test:
+    entries:
+      - command: node --test tests/*.test.js
+        purpose: 运行核心业务逻辑自动化测试
+      - command: node scripts/validate-project.js
+        purpose: 校验页面、云函数与项目结构完整性
+    status: configured
+project:
+  currentPhase: 基础版功能开发完成，待云环境部署与真机联调
+  name: grow-partner
+  problem: 孩子进入初中后，老师通过QQ群发布作业和通知，信息碎片化严重、易遗漏。家长需要一个集中管理工具来：1）登记各科作业并按科目/状态筛选查看；2）记录学校通知并设置定时提醒；3）跟踪驼背矫正等习惯养成打卡；4）制定每日/每周计划。现有通用待办工具无法满足"以孩子为中心、多家庭成员协作、按学期组织"的垂直场景需求。
+  scenarios:
+    - 日常作业登记
+    - 晚上作业检查与标记完成
+    - 学校通知记录与智能提醒
+    - 习惯养成打卡
+    - 每日计划制定与执行
+  summary: 「成长搭档」是一款面向初中生家庭的微信小程序，帮助家长集中管理孩子的作业登记、通知提醒、习惯养成打卡和日常计划。支持多家庭成员协作（爸爸/妈妈/孩子各自账号），基于微信云开发实现数据共享与实时同步，内置AI能力用于作业图片识别和语音录入。
+  users:
+    - 爸爸
+    - 妈妈
+    - 爷爷
+    - 奶奶
+    - 外公
+    - 外婆
+projectResources:
+  agents: []
+  commands: []
+  docs: []
+  skills: []
+  status: configured
+protectedAreas:
+  entries:
+    - path: .env
+      reason: 敏感配置
+      requiresConfirmation: true
+  status: configured
+release:
+  reason: 当前没有正式发布流程
+  status: notApplicable
+schemaVersion: 1
+structure:
+  entries:
+    - path: miniprogram
+      purpose: 原生微信小程序前端页面、样式与公共工具
+    - path: cloudfunctions
+      purpose: 微信云开发云函数与数据库部署说明
+    - path: tests
+      purpose: 核心业务逻辑自动化测试
+    - path: scripts
+      purpose: 项目静态验证脚本
+    - path: docs
+      purpose: 产品需求与开发执行文档
+  status: configured
+techStack:
+  buildTools:
+    - 微信开发者工具
+  databases:
+    - 微信云数据库（文档型数据库）
+    - 微信云存储
+  frameworks:
+    - 微信小程序原生框架
+    - 微信云开发（云函数、云数据库、云存储）
+  languages:
+    - JavaScript（ES6+，不使用 TypeScript）
+    - WXML
+    - WXSS
+    - JSON
+  packageManagers:
+    - npm（仅用于云函数部署时安装官方 wx-server-sdk 运行时依赖）
+  runtimes:
+    - 微信小程序运行时
+    - 微信云函数 Node.js 运行时
+  status: configured
+  testing:
+    - Node.js node:test
+    - 项目静态结构验证脚本

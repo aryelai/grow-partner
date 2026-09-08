@@ -1,0 +1,41 @@
+{
+  "pages": [
+    "pages/login/login",
+    "pages/homework-list/homework-list",
+    "pages/notice-list/notice-list",
+    "pages/habit-list/habit-list",
+    "pages/plan-list/plan-list",
+    "pages/settings/settings",
+    "pages/family-create/family-create",
+    "pages/family-join/family-join",
+    "pages/family-members/family-members",
+    "pages/homework-detail/homework-detail",
+    "pages/homework-edit/homework-edit",
+    "pages/notice-edit/notice-edit",
+    "pages/habit-detail/habit-detail",
+    "pages/plan-edit/plan-edit",
+    "pages/subject-settings/subject-settings"
+  ],
+  "window": {
+    "navigationBarTitleText": "成长搭档",
+    "navigationBarBackgroundColor": "#4A90D9",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F5F6FA",
+    "backgroundTextStyle": "light"
+  },
+  "tabBar": {
+    "color": "#7F8C8D",
+    "selectedColor": "#4A90D9",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      { "pagePath": "pages/homework-list/homework-list", "text": "作业" },
+      { "pagePath": "pages/notice-list/notice-list", "text": "通知" },
+      { "pagePath": "pages/habit-list/habit-list", "text": "习惯" },
+      { "pagePath": "pages/plan-list/plan-list", "text": "计划" },
+      { "pagePath": "pages/settings/settings", "text": "设置" }
+    ]
+  },
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

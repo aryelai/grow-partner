@@ -1,0 +1,24 @@
+<view class="login-page">
+  <view class="brand">
+    <view class="brand-mark">长</view>
+    <view class="brand-title">成长搭档</view>
+    <view class="brand-subtitle">把作业、通知与成长计划放在一起</view>
+  </view>
+
+  <view class="card profile-card" wx:if="{{!registered}}">
+    <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+      <image wx:if="{{avatar}}" class="avatar" src="{{avatar}}" mode="aspectFill" />
+      <view wx:else class="avatar-placeholder">选择头像</view>
+    </button>
+    <input class="input nickname-input" type="nickname" maxlength="30" placeholder="输入昵称" value="{{nickname}}" bindinput="onNicknameInput" />
+    <button class="primary-button register-button" bindtap="register" loading="{{submitting}}" disabled="{{submitting}}">完成注册并继续</button>
+    <view class="privacy-note">无需手机号，账号会与当前微信安全关联。</view>
+  </view>
+
+  <view class="card family-choice" wx:if="{{registered && !hasFamily}}">
+    <view class="section-title">选择使用方式</view>
+    <button class="primary-button choice-button" bindtap="goCreateFamily">创建孩子档案与家庭</button>
+    <button class="ghost-button choice-button" bindtap="goJoinFamily">加入已有家庭</button>
+    <view class="pending-tip" wx:if="{{pending}}">加入申请正在等待创建者处理</view>
+  </view>
+</view>

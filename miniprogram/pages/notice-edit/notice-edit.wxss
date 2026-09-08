@@ -1,0 +1,9 @@
+.switch-row { display: flex; align-items: center; justify-content: space-between; }
+.deadline-row { display: flex; margin: 24rpx 0; }.deadline-row picker { flex: 1; }.deadline-row picker + picker { margin-left: 16rpx; }
+.check { margin-right: 30rpx; }
+.image-grid { display: flex; flex-wrap: wrap; margin-top: 20rpx; }
+.image-wrap { position: relative; width: calc((100% - 24rpx) / 3); height: 190rpx; margin: 0 12rpx 12rpx 0; }.image-wrap:nth-child(3n) { margin-right: 0; }
+.image-wrap image { width: 100%; height: 100%; border-radius: 12rpx; }
+.image-wrap text { position: absolute; top: 4rpx; right: 8rpx; width: 40rpx; height: 40rpx; border-radius: 50%; color: #fff; background: rgba(0,0,0,.55); text-align: center; }
+.save { margin-top: 24rpx; }
+.remove-button { margin-top: 18rpx; margin-bottom: 60rpx; }

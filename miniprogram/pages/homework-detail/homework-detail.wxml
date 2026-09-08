@@ -1,0 +1,13 @@
+<view class="page" wx:if="{{item}}">
+  <view class="card">
+    <view class="detail-title"><text wx:if="{{item.isImportant}}" class="important">★</text><text wx:if="{{item.hasDeadline}}" class="deadline-icon">◷</text>{{item.title}}<text wx:if="{{item.extraRequirement}}" class="extra">（{{item.extraRequirement}}）</text></view>
+    <view class="meta-grid"><text>科目：{{item.subject}}</text><text>学期：{{item.semester}}</text><text>录入：{{item.createdByName}}</text><text>时间：{{item.createdAtText}}</text><text wx:if="{{item.hasDeadline}}" class="{{item.isOverdue ? 'overdue' : ''}}">截止：{{item.deadlineText}}</text></view>
+    <view class="content" wx:if="{{item.content}}">{{item.content}}</view>
+    <view class="image-grid"><image wx:for="{{item.images}}" wx:key="*this" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewImage" /></view>
+    <video wx:if="{{item.videos.length}}" class="video" src="{{item.videos[0]}}" controls="{{true}}" />
+    <view class="link" wx:for="{{item.links}}" wx:key="*this" data-url="{{item}}" bindtap="copyLink">{{item}}</view>
+    <view class="tags"><text class="tag" wx:for="{{item.extraTags}}" wx:key="*this">{{item}}</text></view>
+  </view>
+  <button class="primary-button action" bindtap="toggleCompleted">{{item.isCompleted ? '取消完成' : '✓ 标记为已完成'}}</button>
+  <view class="action-row" wx:if="{{canEdit}}"><button class="ghost-button" bindtap="edit">编辑</button><button class="danger-button" bindtap="remove">删除</button></view>
+</view>

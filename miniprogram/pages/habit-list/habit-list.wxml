@@ -1,0 +1,10 @@
+<view class="page habit-page">
+  <view class="category-tabs"><view wx:for="{{categories}}" wx:key="value" class="category {{selectedCategory === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</view></view>
+  <view class="card habit-card" wx:for="{{items}}" wx:key="_id" data-id="{{item._id}}" bindtap="openDetail">
+    <view class="habit-header"><view><text class="habit-icon">{{item.categoryIcon}}</text><text class="habit-name">{{item.name}}</text></view><text class="streak">连续{{item.streak}}天</text></view>
+    <view class="description">{{item.description || item.checkInSummary}}</view>
+    <view class="progress-row"><view class="progress-track"><view class="progress-value" style="width: {{item.progress}}%;"></view></view><text>{{item.completedDays}}/{{item.targetDays}}天</text></view>
+  </view>
+  <view class="empty" wx:if="{{!loading && !items.length}}">当前分类还没有习惯</view>
+  <button class="fab" bindtap="create">＋</button>
+</view>

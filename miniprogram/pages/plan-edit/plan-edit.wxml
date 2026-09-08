@@ -1,0 +1,20 @@
+<view class="page">
+  <view class="card">
+    <view class="field"><text class="field-label">计划类型</text><view><text wx:for="{{types}}" wx:key="value" class="tag {{form.type === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectType">{{item.label}}计划</text></view></view>
+    <view class="field"><text class="field-label">起始日期 *</text><picker mode="date" value="{{form.date}}" bindchange="onDateChange"><view class="picker">{{form.date}}</view></picker></view>
+    <view class="field"><text class="field-label">标题 *</text><input class="input" maxlength="80" value="{{form.title}}" data-field="title" bindinput="onInput" /></view>
+    <view class="field"><text class="field-label">执行人</text><picker range="{{assigneeLabels}}" value="{{assigneeIndex}}" bindchange="onAssigneeChange"><view class="picker">{{assigneeLabels[assigneeIndex]}}</view></picker></view>
+    <view class="field"><text class="field-label">备注</text><textarea class="textarea" maxlength="500" value="{{form.notes}}" data-field="notes" bindinput="onInput" /></view>
+  </view>
+  <view class="card">
+    <view class="section-title">子任务</view>
+    <view class="task-edit" wx:for="{{form.items}}" wx:key="index">
+      <input class="input" maxlength="100" value="{{item.text}}" data-index="{{index}}" bindinput="onItemInput" placeholder="任务内容" />
+      <picker class="priority-picker" range="{{priorityLabels}}" value="{{item.priorityIndex}}" data-index="{{index}}" bindchange="onPriorityChange"><view class="picker">{{priorityLabels[item.priorityIndex]}}</view></picker>
+      <text class="delete" data-index="{{index}}" bindtap="removeItem">删除</text>
+    </view>
+    <button class="ghost-button" bindtap="addItem">＋ 添加子任务</button>
+  </view>
+  <button class="primary-button save" loading="{{submitting}}" disabled="{{submitting}}" bindtap="save">保存计划</button>
+  <button wx:if="{{id}}" class="danger-button remove-button" bindtap="remove">删除计划</button>
+</view>

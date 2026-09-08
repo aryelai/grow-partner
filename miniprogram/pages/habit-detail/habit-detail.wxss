@@ -1,0 +1,7 @@
+.summary-title { font-size: 40rpx; font-weight: 700; }.description { margin-top: 18rpx; line-height: 1.7; }
+.month-nav { display: flex; align-items: center; justify-content: space-between; font-weight: 600; }.month-nav button { color: var(--primary); background: transparent; font-size: 42rpx; }
+.weekdays, .days { display: flex; flex-wrap: wrap; text-align: center; }.weekdays { margin: 16rpx 0; color: var(--text-light); font-size: 22rpx; }.weekdays text { width: 14.2857%; }
+.day { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 14.2857%; height: 84rpx; border-radius: 12rpx; box-sizing: border-box; }.day.today { box-shadow: inset 0 0 0 2rpx var(--primary); }.day.completed { color: var(--success); background: #EAF8F0; }.day.partial { color: var(--warning); background: #FFF7E8; }.day.missed { color: var(--danger); background: #FFF0EE; }.mark { font-size: 20rpx; }
+.check-item { display: flex; align-items: center; padding: 18rpx 0; border-bottom: 2rpx solid var(--border); }.check-item text { margin-left: 12rpx; }
+.photo-button { margin: 24rpx 0 16rpx; }.photo { width: 200rpx; height: 200rpx; border-radius: 14rpx; }.note { margin: 20rpx 0; }
+.remove-button { margin-bottom: 60rpx; }
