@@ -346,7 +346,8 @@ test("没有微信身份时不能用载荷身份登记订阅", async () => {
 
 function createSchedulerFixture(options = {}) {
   const nowValue = new Date(options.now || "2026-09-08T15:00:00.000Z");
-  const users = options.users || [{ openid: testUser.openid, familyId: testUser.familyId, role: "creator", relation: "father" }];
+  const users = (options.users || [{ openid: testUser.openid, familyId: testUser.familyId, role: "creator", relation: "father" }])
+    .map((user, index) => ({ ...user, _id: user._id || `user-${index + 1}` }));
   const notices = new Map();
   const deliveries = new Map();
   const subscriptions = new Map();
@@ -369,6 +370,7 @@ function createSchedulerFixture(options = {}) {
   let sendIndex = 0;
   const sendCalls = [];
   let transactionQueue = Promise.resolve();
+  let retryPending = Boolean(options.retryOnce);
   const command = {
     in: (values) => ({ operator: "in", values }),
     lte: (value) => ({ operator: "lte", value }),
@@ -379,12 +381,20 @@ function createSchedulerFixture(options = {}) {
     collection(name) { return createCollection(name, { notices, deliveries, subscriptions }, false); },
     async runTransaction(callback) {
       const result = transactionQueue.then(async () => {
-        const staged = { notices: cloneMap(notices), deliveries: cloneMap(deliveries), subscriptions: cloneMap(subscriptions) };
-        const value = await callback({ collection: (name) => createCollection(name, staged, true) });
-        replaceMap(notices, staged.notices);
-        replaceMap(deliveries, staged.deliveries);
-        replaceMap(subscriptions, staged.subscriptions);
-        return value;
+        async function executeTransaction() {
+          const staged = { notices: cloneMap(notices), deliveries: cloneMap(deliveries), subscriptions: cloneMap(subscriptions) };
+          const value = await callback({ collection: (name) => createCollection(name, staged, true) });
+          if (retryPending) {
+            retryPending = false;
+            if (typeof options.onTransactionConflict === "function") options.onTransactionConflict({ notices, deliveries, subscriptions });
+            return executeTransaction();
+          }
+          replaceMap(notices, staged.notices);
+          replaceMap(deliveries, staged.deliveries);
+          replaceMap(subscriptions, staged.subscriptions);
+          return value;
+        }
+        return executeTransaction();
       });
       transactionQueue = result.catch(() => {});
       return result;
@@ -413,15 +423,36 @@ function createSchedulerFixture(options = {}) {
     return null;
   }
   function createCollection(name, stores, inTransaction) {
+    if (name === "users") {
+      if (inTransaction) {
+        return {
+          where() { throw new Error("事务不支持 where"); },
+          doc(id) {
+            return {
+              async get() {
+                const user = users.find((item) => item._id === id);
+                if (!user) {
+                  const error = new Error("document.get:fail document does not exist");
+                  error.code = "DOCUMENT_NOT_FOUND";
+                  throw error;
+                }
+                return { data: structuredClone(user) };
+              },
+            };
+          },
+        };
+      }
+      return { where: (query) => queryUsers(query, users) };
+    }
     const map = mapFor(name, stores);
     if (!map) {
-      if (name === "users") {
-        return { where: (query) => queryUsers(query, users) };
-      }
       throw new Error(`测试未实现集合：${name}`);
     }
     return {
-      where(query) { return queryRecords(query, [...map.values()]); },
+      where(query) {
+        if (inTransaction) throw new Error("事务不支持 where");
+        return queryRecords(query, [...map.values()]);
+      },
       doc(id) {
         return {
           async get() {
@@ -481,6 +512,7 @@ function createSchedulerFixture(options = {}) {
     notices,
     deliveries,
     subscriptions,
+    users,
     nowValue,
     newService() { return createReminderService(dependencies); },
   };
@@ -589,6 +621,7 @@ test("已完成额度结算的占用不会重复恢复预计次数", async () =>
 test("并发占用同一任务只扣减一次预计次数", async () => {
   const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }] });
   const delivery = schedulerDelivery(fixture);
+  fixture.notices.get("notice-1").reminderState = "materialized";
 
   const claims = await Promise.all([
     fixture.service.claimDelivery(delivery.deliveryId),
@@ -598,6 +631,53 @@ test("并发占用同一任务只扣减一次预计次数", async () => {
   assert.equal(claims.filter(Boolean).length, 1);
   assert.equal(fixture.deliveries.get(delivery.deliveryId).status, "sending");
   assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
+});
+
+test("事务夹具拒绝事务内条件查询", async () => {
+  const fixture = createSchedulerFixture();
+
+  await assert.rejects(fixture.database.runTransaction(async (transaction) =>
+    transaction.collection("users").where({ familyId: testUser.familyId }).get()), /事务不支持 where/);
+});
+
+test("事务重试后未获得占用不会返回首次尝试的发送凭据", async () => {
+  let deliveryId = "";
+  const fixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    retryOnce: true,
+    onTransactionConflict: ({ deliveries }) => {
+      const delivery = deliveries.get(deliveryId);
+      deliveries.set(deliveryId, {
+        ...delivery,
+        status: "sending",
+        lockExpiresAt: new Date("2026-09-08T15:10:00.000Z"),
+      });
+    },
+  });
+  const delivery = schedulerDelivery(fixture);
+  deliveryId = delivery.deliveryId;
+  fixture.notices.get("notice-1").reminderState = "materialized";
+
+  const claim = await fixture.service.claimDelivery(deliveryId);
+
+  assert.equal(claim, null);
+  assert.equal(fixture.deliveries.get(deliveryId).status, "sending");
+  assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 1);
+});
+
+test("物化事务重试不会保留已丢弃尝试的创建计数", async () => {
+  const deliveryId = createDeliveryId("notice-1", 1, testUser.openid, TODO_TEMPLATE_ID);
+  const fixture = createSchedulerFixture({
+    retryOnce: true,
+    onTransactionConflict: ({ deliveries }) => {
+      deliveries.set(deliveryId, { _id: deliveryId, deliveryId, status: "waiting_subscription" });
+    },
+  });
+
+  const created = await fixture.service.materializeNotice(fixture.notices.get("notice-1"));
+
+  assert.equal(created, 0);
+  assert.equal(fixture.deliveries.size, 1);
 });
 
 test("未知发送结果进入不确定且不自动重发", async () => {
@@ -622,6 +702,20 @@ test("命中敏感词时使用安全模板重试一次", async () => {
   assert.equal(fixture.sendCalls[1].data.thing1.value, "家庭待办");
 });
 
+test("抛出式敏感词错误同样使用安全模板重试一次", async () => {
+  const sensitiveError = Object.assign(new Error("sensitive content"), { errCode: 45168 });
+  const fixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    responses: [sensitiveError, { errCode: 0 }],
+  });
+
+  await fixture.service.run();
+
+  assert.equal([...fixture.deliveries.values()][0].status, "sent");
+  assert.equal(fixture.sendCalls.length, 2);
+  assert.equal(fixture.sendCalls[1].data.thing1.value, "家庭待办");
+});
+
 test("安全模板重试仍命中敏感词时标记失败且不恢复额度", async () => {
   const fixture = createSchedulerFixture({
     subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
@@ -632,6 +726,32 @@ test("安全模板重试仍命中敏感词时标记失败且不恢复额度", as
 
   assert.equal([...fixture.deliveries.values()][0].status, "failed");
   assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
+  assert.equal(fixture.sendCalls.length, 2);
+});
+
+test("安全模板第二次明确临时失败直接终止", async () => {
+  const fixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    responses: [{ errCode: 45168 }, { errCode: -1 }],
+  });
+
+  await fixture.service.run();
+
+  assert.equal([...fixture.deliveries.values()][0].status, "failed");
+  assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
+  assert.equal(fixture.sendCalls.length, 2);
+});
+
+test("安全模板第二次未知结果保持不确定且不自动重发", async () => {
+  const fixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    responses: [{ errCode: 45168 }, {}],
+  });
+
+  await fixture.service.run();
+  await fixture.service.run();
+
+  assert.equal([...fixture.deliveries.values()][0].status, "uncertain");
   assert.equal(fixture.sendCalls.length, 2);
 });
 
@@ -730,7 +850,7 @@ test("禁用通知或成员关系失效时取消待发送任务", async () => {
   const users = [{ openid: testUser.openid, familyId: testUser.familyId, role: "creator", relation: "father" }];
   const memberFixture = createSchedulerFixture({ users, subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }] });
   const memberDelivery = schedulerDelivery(memberFixture);
-  users[0].relation = "mother";
+  memberFixture.users[0].relation = "mother";
   await memberFixture.service.run();
   assert.equal(memberFixture.deliveries.get(memberDelivery.deliveryId).status, "canceled");
 });
@@ -801,4 +921,32 @@ test("发送锁过期后转为不确定且不自动重发", async () => {
 
   assert.equal(fixture.deliveries.get(delivery.deliveryId).status, "uncertain");
   assert.equal(fixture.sendCalls.length, 0);
+});
+
+test("调度只扫描已到期任务以避免未来重试任务饿死当前发送", async () => {
+  const futureDeliveries = Array.from({ length: 50 }, (_, index) => ({
+    _id: `future-${index}`,
+    deliveryId: `future-${index}`,
+    noticeId: "notice-1",
+    familyId: testUser.familyId,
+    reminderVersion: 1,
+    recipientOpenid: `future-openid-${index}`,
+    recipientRelation: "father",
+    deadlineAt: new Date("2026-09-08T18:00:00.000Z"),
+    status: "retry",
+    attemptCount: 1,
+    nextAttemptAt: new Date("2026-09-08T16:00:00.000Z"),
+    lockExpiresAt: null,
+  }));
+  const fixture = createSchedulerFixture({
+    deliveries: futureDeliveries,
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+  });
+  schedulerDelivery(fixture);
+  fixture.notices.get("notice-1").reminderState = "materialized";
+
+  const result = await fixture.service.run();
+
+  assert.equal(result.sent, 1);
+  assert.equal(fixture.sendCalls.length, 1);
 });

@@ -131,24 +131,28 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
     const noticeId = getNoticeId(notice);
     const version = Number.isInteger(notice && notice.reminderVersion) ? notice.reminderVersion : 1;
     if (!noticeId || !notice.familyId || notice.deleted || notice.reminderState === "disabled") return 0;
+    const usersResult = await database.collection("users").where({
+      familyId: notice.familyId,
+      role: inCondition([...VALID_ROLES]),
+    }).limit(50).get();
     let created = 0;
-    await database.runTransaction(async (transaction) => {
-      const currentNotice = await readDoc(transaction, "notices", noticeId);
-      if (!currentNotice || currentNotice.deleted) return;
-      const currentVersion = Number.isInteger(currentNotice.reminderVersion) ? currentNotice.reminderVersion : 1;
-      if (currentVersion !== version || !["scheduled", "materialized"].includes(currentNotice.reminderState)) return;
-      const targets = Array.isArray(currentNotice.remindTargets) ? currentNotice.remindTargets : [];
-      const deadlineAt = getDeadline(currentNotice);
-      if (!deadlineAt) return;
-      const usersResult = await transaction.collection("users").where({
-        familyId: currentNotice.familyId,
-        role: inCondition([...VALID_ROLES]),
-      }).limit(50).get();
-      let transactionCreated = 0;
-      for (const user of usersResult.data || []) {
-        if (!user || !user.openid || !VALID_ROLES.has(user.role) || !targets.includes(user.relation)) continue;
-        const deliveryId = createDeliveryId(noticeId, version, user.openid, TODO_TEMPLATE_ID);
-        if (await readDoc(transaction, "reminder_deliveries", deliveryId)) continue;
+    for (const candidate of usersResult.data || []) {
+      if (!candidate || typeof candidate._id !== "string" || !candidate._id) continue;
+      created += await database.runTransaction(async (transaction) => {
+        const [currentNotice, currentUser] = await Promise.all([
+          readDoc(transaction, "notices", noticeId),
+          readDoc(transaction, "users", candidate._id),
+        ]);
+        if (!currentNotice || currentNotice.deleted || !currentUser) return 0;
+        const currentVersion = Number.isInteger(currentNotice.reminderVersion) ? currentNotice.reminderVersion : 1;
+        const targets = Array.isArray(currentNotice.remindTargets) ? currentNotice.remindTargets : [];
+        if (currentVersion !== version || !["scheduled", "materialized"].includes(currentNotice.reminderState)
+          || currentUser.familyId !== currentNotice.familyId || !currentUser.openid
+          || !VALID_ROLES.has(currentUser.role) || !targets.includes(currentUser.relation)) return 0;
+        const deadlineAt = getDeadline(currentNotice);
+        if (!deadlineAt) return 0;
+        const deliveryId = createDeliveryId(noticeId, version, currentUser.openid, TODO_TEMPLATE_ID);
+        if (await readDoc(transaction, "reminder_deliveries", deliveryId)) return 0;
         const timestamp = now();
         await transaction.collection("reminder_deliveries").doc(deliveryId).set({ data: {
           _id: deliveryId,
@@ -156,8 +160,8 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
           noticeId,
           familyId: currentNotice.familyId,
           reminderVersion: version,
-          recipientOpenid: user.openid,
-          recipientRelation: user.relation,
+          recipientOpenid: currentUser.openid,
+          recipientRelation: currentUser.relation,
           templateId: TODO_TEMPLATE_ID,
           scheduledAt: asDate(currentNotice.scheduledAt),
           deadlineAt,
@@ -172,66 +176,73 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
           createdAt: timestamp,
           updatedAt: timestamp,
         } });
-        transactionCreated += 1;
-      }
-      if (currentNotice.reminderState === "scheduled") {
+        return 1;
+      });
+    }
+    await database.runTransaction(async (transaction) => {
+      const currentNotice = await readDoc(transaction, "notices", noticeId);
+      if (!currentNotice || currentNotice.deleted) return;
+      const currentVersion = Number.isInteger(currentNotice.reminderVersion) ? currentNotice.reminderVersion : 1;
+      if (currentVersion === version && currentNotice.reminderState === "scheduled") {
         await transaction.collection("notices").doc(noticeId).update({ data: { reminderState: "materialized", updatedAt: now() } });
       }
-      created += transactionCreated;
     });
     return created;
   }
 
   async function claimDelivery(deliveryId) {
-    let result = null;
+    const candidateDelivery = await readDoc(database, "reminder_deliveries", deliveryId);
+    if (!candidateDelivery) return null;
+    const recipientResult = await database.collection("users").where({
+      familyId: candidateDelivery.familyId,
+      openid: candidateDelivery.recipientOpenid,
+    }).limit(1).get();
+    const recipientCandidate = recipientResult.data && recipientResult.data[0];
+    const recipientId = recipientCandidate && recipientCandidate._id;
     const currentTime = now();
-    await database.runTransaction(async (transaction) => {
+    return database.runTransaction(async (transaction) => {
       const delivery = await readDoc(transaction, "reminder_deliveries", deliveryId);
-      if (!delivery) return;
+      if (!delivery) return null;
       const deadline = getDeadline(delivery);
       if (delivery.status === "sending") {
         if (!deadline || currentTime >= deadline) {
           await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "uncertain", updatedAt: currentTime, lockExpiresAt: null } });
-          result = { terminalStatus: "uncertain" };
-          return;
+          return { terminalStatus: "uncertain" };
         }
-        if (delivery.lockExpiresAt && asDate(delivery.lockExpiresAt) > currentTime) return;
+        if (delivery.lockExpiresAt && asDate(delivery.lockExpiresAt) > currentTime) return null;
         await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "uncertain", updatedAt: currentTime, lockExpiresAt: null } });
-        result = { terminalStatus: "uncertain" };
-        return;
+        return { terminalStatus: "uncertain" };
       }
-      if (!["waiting_subscription", "retry"].includes(delivery.status)) return;
+      if (!["waiting_subscription", "retry"].includes(delivery.status)) return null;
       const notice = await readDoc(transaction, "notices", delivery.noticeId);
       if (!notice || notice.deleted || notice.familyId !== delivery.familyId
-        || !["scheduled", "materialized"].includes(notice.reminderState)
+        || notice.reminderState !== "materialized"
         || Number(notice.reminderVersion || 1) !== Number(delivery.reminderVersion)) {
         await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "canceled", updatedAt: currentTime, lockExpiresAt: null } });
-        result = { terminalStatus: "canceled" };
-        return;
+        return { terminalStatus: "canceled" };
       }
-      const users = await transaction.collection("users").where({ familyId: delivery.familyId, openid: delivery.recipientOpenid }).limit(1).get();
-      const recipient = users.data && users.data[0];
+      const recipient = typeof recipientId === "string" && recipientId
+        ? await readDoc(transaction, "users", recipientId)
+        : null;
       if (!recipient || !VALID_ROLES.has(recipient.role) || recipient.relation !== delivery.recipientRelation
+        || recipient.familyId !== delivery.familyId || recipient.openid !== delivery.recipientOpenid
         || !Array.isArray(notice.remindTargets) || !notice.remindTargets.includes(recipient.relation)) {
         await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "canceled", updatedAt: currentTime, lockExpiresAt: null } });
-        result = { terminalStatus: "canceled" };
-        return;
+        return { terminalStatus: "canceled" };
       }
       if (!deadline) {
         await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "canceled", updatedAt: currentTime, lockExpiresAt: null } });
-        result = { terminalStatus: "canceled" };
-        return;
+        return { terminalStatus: "canceled" };
       }
       if (currentTime >= deadline) {
         await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "expired", updatedAt: currentTime, lockExpiresAt: null } });
-        result = { terminalStatus: "expired" };
-        return;
+        return { terminalStatus: "expired" };
       }
-      if (delivery.nextAttemptAt && asDate(delivery.nextAttemptAt) > currentTime) return;
+      if (delivery.nextAttemptAt && asDate(delivery.nextAttemptAt) > currentTime) return null;
       const subscriptionId = createSubscriptionId(delivery.recipientOpenid, TODO_TEMPLATE_ID);
       const subscription = await readDoc(transaction, "message_subscriptions", subscriptionId);
       const availableCount = normalizeCount(subscription && subscription.estimatedAvailableCount, AVAILABLE_COUNT_LIMIT);
-      if (availableCount <= 0) return;
+      if (availableCount <= 0) return null;
       const next = {
         status: "sending",
         attemptCount: (delivery.attemptCount || 0) + 1,
@@ -241,9 +252,8 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
       };
       await transaction.collection("message_subscriptions").doc(subscriptionId).update({ data: { estimatedAvailableCount: availableCount - 1, updatedAt: currentTime } });
       await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: next });
-      result = { ...delivery, ...next, subscriptionId, notice };
+      return { ...delivery, ...next, subscriptionId, notice };
     });
-    return result;
   }
 
   async function completeDelivery(claim, outcome) {
@@ -307,15 +317,48 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
   }
 
   async function updateNoticeSummary(noticeId, version) {
+    const deliveryResult = await database.collection("reminder_deliveries")
+      .where({ noticeId, reminderVersion: version }).limit(50).get();
+    const deliveryIds = (deliveryResult.data || [])
+      .map((delivery) => delivery.deliveryId || delivery._id)
+      .filter((deliveryId) => typeof deliveryId === "string" && deliveryId);
     await database.runTransaction(async (transaction) => {
       const notice = await readDoc(transaction, "notices", noticeId);
       if (!notice || Number(notice.reminderVersion || 1) !== Number(version)) return;
-      const result = await transaction.collection("reminder_deliveries").where({ noticeId, reminderVersion: version }).limit(50).get();
-      const deliveries = result.data || [];
-      if (deliveries.length > 0 && deliveries.every((delivery) => delivery.status === "sent")) {
+      const deliveries = await Promise.all(deliveryIds.map((deliveryId) => readDoc(transaction, "reminder_deliveries", deliveryId)));
+      if (deliveries.length > 0 && deliveries.every((delivery) => delivery && delivery.status === "sent")) {
         await transaction.collection("notices").doc(noticeId).update({ data: { reminderState: "completed", isReminded: true, updatedAt: now() } });
       }
     });
+  }
+
+  function normalizeSendOutcome(response, error) {
+    const value = error || response;
+    const errCode = value && typeof value === "object" && Number.isFinite(value.errCode) ? value.errCode : null;
+    if (!error && response && typeof response === "object" && errCode === 0) return { ok: true };
+    if (!error && (!response || typeof response !== "object" || errCode === null)) {
+      return { ok: false, category: "uncertain", error: new Error("unknown send result") };
+    }
+    return { ok: false, category: classifySendError(value), errCode, error: value };
+  }
+
+  async function sendDelivery(payload, notice) {
+    let first;
+    try {
+      first = normalizeSendOutcome(await sendSubscribeMessage(payload));
+    } catch (error) {
+      first = normalizeSendOutcome(null, error);
+    }
+    if (first.errCode !== 45168) return first;
+
+    let second;
+    try {
+      second = normalizeSendOutcome(await sendSubscribeMessage({ ...payload, data: buildSafeTemplateData(notice) }));
+    } catch (error) {
+      second = normalizeSendOutcome(null, error);
+    }
+    if (second.ok || second.category === "uncertain") return second;
+    return { ...second, category: "safe_template_failed" };
   }
 
   async function run() {
@@ -338,7 +381,8 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
     for (const notice of notices.data || []) createdDeliveries += await materializeNotice(notice);
     const deliveryResult = await database.collection("reminder_deliveries").where({
       status: inCondition(["waiting_subscription", "retry", "sending"]),
-    }).limit(DELIVERY_SCAN_LIMIT).get();
+      nextAttemptAt: lteCondition(now()),
+    }).orderBy("nextAttemptAt", "asc").limit(DELIVERY_SCAN_LIMIT).get();
     const groups = new Map();
     for (const delivery of deliveryResult.data || []) {
       const recipient = delivery.recipientOpenid || "";
@@ -374,24 +418,7 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
           lang: "zh_CN",
           data: buildTemplateData(notice),
         };
-        let outcome;
-        try {
-          let response = await sendSubscribeMessage(payload);
-          if (!response || typeof response !== "object" || !Number.isFinite(response.errCode)) {
-            outcome = { ok: false, category: "uncertain", error: new Error("unknown send result") };
-          } else if (response.errCode === 45168) {
-            response = await sendSubscribeMessage({ ...payload, data: buildSafeTemplateData(notice) });
-            outcome = response && response.errCode === 0
-              ? { ok: true }
-              : { ok: false, category: classifySendError(response), errCode: response && response.errCode, error: response };
-          } else {
-            outcome = response.errCode === 0
-              ? { ok: true }
-              : { ok: false, category: classifySendError(response), errCode: response.errCode, error: response };
-          }
-        } catch (error) {
-          outcome = { ok: false, category: classifySendError(error), errCode: error && error.errCode, error };
-        }
+        const outcome = await sendDelivery(payload, notice);
         const status = await completeDelivery(claim, outcome);
         if (status === "sent") sent += 1;
         else if (status === "failed") failed += 1;
