@@ -2,15 +2,25 @@ const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { NOTICE_CATEGORIES } = require("../../utils/constants");
 const { formatDateTime } = require("../../utils/date");
+const { canPerform } = require("../../utils/permissions");
 
 const categories = [{ value: "all", label: "全部" }, ...NOTICE_CATEGORIES];
 
 Page({
-  data: { categories, category: "all", keyword: "", semester: "2026下", items: [], page: 1, hasMore: false, loading: true },
+  data: { categories, category: "all", keyword: "", semester: "2026下", items: [], page: 1, hasMore: false, loading: true, canManage: false },
   async onShow() {
-    const session = await requireFamily();
-    if (!session) return;
-    this.setData({ semester: session.family.currentSemester });
+    let session;
+    try {
+      session = await requireFamily();
+    } catch (error) {
+      this.currentUser = null;
+      this.setData({ canManage: false });
+      showError(error, "身份校验失败，请稍后重试");
+      return;
+    }
+    if (!session) { this.currentUser = null; this.setData({ canManage: false }); return; }
+    this.currentUser = session.user;
+    this.setData({ semester: session.family.currentSemester, canManage: canPerform(session.user.role, "manageNotice") });
     await this.load(true);
   },
   onPullDownRefresh() { this.load(true).finally(() => wx.stopPullDownRefresh()); },
@@ -27,7 +37,13 @@ Page({
   },
   selectCategory(event) { this.setData({ category: event.currentTarget.dataset.value }); this.load(true); },
   onSearchInput(event) { clearTimeout(this.searchTimer); this.setData({ keyword: event.detail.value }); this.searchTimer = setTimeout(() => this.load(true), 300); },
-  create() { wx.navigateTo({ url: "/pages/notice-edit/notice-edit" }); },
-  edit(event) { wx.navigateTo({ url: `/pages/notice-edit/notice-edit?id=${event.currentTarget.dataset.id}` }); },
+  create() {
+    if (!canPerform(this.currentUser && this.currentUser.role, "manageNotice")) { wx.showToast({ title: "孩子账号不能新增或编辑通知", icon: "none" }); return; }
+    wx.navigateTo({ url: "/pages/notice-edit/notice-edit" });
+  },
+  edit(event) {
+    if (!canPerform(this.currentUser && this.currentUser.role, "manageNotice")) { wx.showToast({ title: "孩子账号不能新增或编辑通知", icon: "none" }); return; }
+    wx.navigateTo({ url: `/pages/notice-edit/notice-edit?id=${event.currentTarget.dataset.id}` });
+  },
   onUnload() { clearTimeout(this.searchTimer); },
 });

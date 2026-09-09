@@ -8,5 +8,5 @@
   </view>
   <view class="empty" wx:if="{{!loading && !items.length}}">暂无通知</view>
   <view class="load-more" wx:if="{{loading}}">加载中…</view>
-  <button class="fab" bindtap="create">＋</button>
+  <button wx:if="{{canManage}}" class="fab" bindtap="create">＋</button>
 </view>

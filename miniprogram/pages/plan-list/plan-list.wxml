@@ -7,5 +7,5 @@
     <view class="notes" wx:if="{{plan.notes}}">备注：{{plan.notes}}</view>
   </view>
   <view class="empty" wx:if="{{!loading && !items.length}}">这个时间范围还没有计划</view>
-  <button class="fab" bindtap="create">＋</button>
+  <button wx:if="{{canManage}}" class="fab" bindtap="create">＋</button>
 </view>

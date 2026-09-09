@@ -3,6 +3,7 @@ const { requireFamily } = require("../../utils/session");
 const { DEFAULT_SUBJECTS, CURRENT_SEMESTER } = require("../../utils/constants");
 const { formatDate } = require("../../utils/date");
 const { validateUrl } = require("../../utils/validation");
+const { canPerform } = require("../../utils/permissions");
 
 function fileExtension(path) {
   const matched = /\.([a-z0-9]+)(?:\?|$)/i.exec(path);
@@ -22,10 +23,21 @@ Page({
     submitting: false,
   },
 
-  async onLoad(options) {
-    const session = await requireFamily();
-    if (!session) return;
+  async refreshPermission(action = this.data.id ? "updateHomework" : "createHomework") {
+    let session;
+    try { session = await requireFamily(); }
+    catch (error) { this.currentUser = null; this.familyId = null; showError(error, "身份校验失败，请稍后重试"); return null; }
+    if (!session) { this.currentUser = null; this.familyId = null; return null; }
+    this.currentUser = session.user;
     this.familyId = session.user.familyId;
+    if (!canPerform(session.user.role, action)) { wx.showToast({ title: "孩子账号不能新增或编辑作业", icon: "none" }); return null; }
+    return session;
+  },
+
+  async onLoad(options) {
+    const action = options.id ? "updateHomework" : "createHomework";
+    const session = await this.refreshPermission(action);
+    if (!session) { if (this.currentUser) wx.navigateBack(); return; }
     let subjects = DEFAULT_SUBJECTS[session.family.educationStage] || DEFAULT_SUBJECTS.junior_high;
     try {
       const subjectData = await callFunction("settings", "getSubjects");
@@ -78,9 +90,12 @@ Page({
   removeTag(event) { const tags = [...this.data.form.extraTags]; tags.splice(event.currentTarget.dataset.index, 1); this.setData({ "form.extraTags": tags }); },
 
   async chooseMedia() {
+    if (!await this.refreshPermission()) { this.setData({ uploading: false }); return; }
     try {
       const remainingImages = 9 - this.data.form.images.length;
       const result = await wx.chooseMedia({ count: Math.min(9, remainingImages + (this.data.form.videos.length ? 0 : 1)), mediaType: ["image", "video"], sizeType: ["compressed"] });
+      const session = await this.refreshPermission();
+      if (!session) return;
       const imageFiles = result.tempFiles.filter((item) => item.fileType === "image").slice(0, remainingImages);
       const videoFiles = this.data.form.videos.length ? [] : result.tempFiles.filter((item) => item.fileType === "video").slice(0, 1);
       if (imageFiles.some((item) => item.size > 10 * 1024 * 1024) || videoFiles.some((item) => item.size > 100 * 1024 * 1024)) {
@@ -88,8 +103,8 @@ Page({
       }
       this.setData({ uploading: true });
       const timestamp = Date.now();
-      const images = await Promise.all(imageFiles.map((item, index) => uploadFile(`homework/${this.familyId}/${timestamp}-image-${index}.${fileExtension(item.tempFilePath)}`, item.tempFilePath)));
-      const videos = await Promise.all(videoFiles.map((item, index) => uploadFile(`homework/${this.familyId}/${timestamp}-video-${index}.${fileExtension(item.tempFilePath)}`, item.tempFilePath)));
+      const images = await Promise.all(imageFiles.map((item, index) => uploadFile(`homework/${session.user.familyId}/${timestamp}-image-${index}.${fileExtension(item.tempFilePath)}`, item.tempFilePath)));
+      const videos = await Promise.all(videoFiles.map((item, index) => uploadFile(`homework/${session.user.familyId}/${timestamp}-video-${index}.${fileExtension(item.tempFilePath)}`, item.tempFilePath)));
       this.setData({ "form.images": [...this.data.form.images, ...images], "form.videos": [...this.data.form.videos, ...videos] });
     } catch (error) {
       if (!String(error.errMsg || error.message).includes("cancel")) showError(error, "附件上传失败");
@@ -98,14 +113,17 @@ Page({
   removeMedia(event) { const type = event.currentTarget.dataset.type; const values = [...this.data.form[type]]; values.splice(event.currentTarget.dataset.index, 1); this.setData({ [`form.${type}`]: values }); },
 
   async save() {
-    const form = this.data.form;
-    if (!form.subject || !form.title.trim()) { wx.showToast({ title: "请选择科目并填写主题", icon: "none" }); return; }
-    const deadline = form.hasDeadline ? new Date(`${this.data.deadlineDate}T${this.data.deadlineTime}:00`).toISOString() : null;
+    if (this.saveInProgress) return;
+    this.saveInProgress = true;
     this.setData({ submitting: true });
     try {
+      if (!await this.refreshPermission()) return;
+      const form = this.data.form;
+      if (!form.subject || !form.title.trim()) { wx.showToast({ title: "请选择科目并填写主题", icon: "none" }); return; }
+      const deadline = form.hasDeadline ? new Date(`${this.data.deadlineDate}T${this.data.deadlineTime}:00`).toISOString() : null;
       await callFunction("homework", this.data.id ? "update" : "create", { ...form, id: this.data.id, deadline });
       wx.navigateBack();
     } catch (error) { showError(error, "作业保存失败"); }
-    finally { this.setData({ submitting: false }); }
+    finally { this.saveInProgress = false; this.setData({ submitting: false }); }
   },
 });

@@ -3,6 +3,7 @@ const { requireFamily } = require("../../utils/session");
 const { DEFAULT_SUBJECTS } = require("../../utils/constants");
 const { getAdjacentSemester, formatDateTime } = require("../../utils/date");
 const { sortHomework } = require("../../utils/homework");
+const { canPerform } = require("../../utils/permissions");
 
 const RELATION_NAMES = {
   father: "爸爸", mother: "妈妈", grandpa_paternal: "爷爷", grandma_paternal: "奶奶",
@@ -23,11 +24,21 @@ Page({
     page: 1,
     hasMore: false,
     loading: true,
+    canManage: false,
   },
 
   async onShow() {
-    const session = await requireFamily();
-    if (!session) return;
+    let session;
+    try {
+      session = await requireFamily();
+    } catch (error) {
+      this.currentUser = null;
+      this.setData({ canManage: false });
+      showError(error, "身份校验失败，请稍后重试");
+      return;
+    }
+    if (!session) { this.currentUser = null; this.setData({ canManage: false }); return; }
+    this.currentUser = session.user;
     const family = session.family;
     let subjectList = DEFAULT_SUBJECTS[family.educationStage] || DEFAULT_SUBJECTS.junior_high;
     try {
@@ -39,6 +50,7 @@ Page({
     this.setData({
       semester: family.currentSemester,
       subjects: ["全部", ...subjectList],
+      canManage: canPerform(session.user.role, "createHomework"),
     });
     await this.load(true);
   },
@@ -92,7 +104,10 @@ Page({
     this.setData({ keyword: event.detail.value });
     this.searchTimer = setTimeout(() => this.load(true), 300);
   },
-  createHomework() { wx.navigateTo({ url: `/pages/homework-edit/homework-edit?semester=${this.data.semester}` }); },
+  createHomework() {
+    if (!canPerform(this.currentUser && this.currentUser.role, "createHomework")) { wx.showToast({ title: "孩子账号不能新增作业", icon: "none" }); return; }
+    wx.navigateTo({ url: `/pages/homework-edit/homework-edit?semester=${this.data.semester}` });
+  },
   openDetail(event) { wx.navigateTo({ url: `/pages/homework-detail/homework-detail?id=${event.currentTarget.dataset.id}` }); },
   previewImage(event) { wx.previewImage({ current: event.currentTarget.dataset.url, urls: event.currentTarget.dataset.urls }); },
   async toggleCompleted(event) {
