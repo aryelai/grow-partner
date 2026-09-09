@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { createReminderService } = require("../cloudfunctions/reminder/service");
-const { TODO_TEMPLATE_ID, createSubscriptionId } = require("../cloudfunctions/reminder/core");
+const { TODO_TEMPLATE_ID, createSubscriptionId, createDeliveryId } = require("../cloudfunctions/reminder/core");
 
 const testUser = { openid: "openid-1", familyId: "family-1", role: "creator" };
 const subscriptionId = createSubscriptionId(testUser.openid, TODO_TEMPLATE_ID);
@@ -342,4 +342,463 @@ test("没有微信身份时不能用载荷身份登记订阅", async () => {
   assert.equal(result.success, false);
   assert.equal(result.message, "请先登录并加入家庭");
   assert.equal(fixture.getAccessCount(), 0);
+});
+
+function createSchedulerFixture(options = {}) {
+  const nowValue = new Date(options.now || "2026-09-08T15:00:00.000Z");
+  const users = options.users || [{ openid: testUser.openid, familyId: testUser.familyId, role: "creator", relation: "father" }];
+  const notices = new Map();
+  const deliveries = new Map();
+  const subscriptions = new Map();
+  const baseNotice = {
+    _id: "notice-1",
+    familyId: testUser.familyId,
+    reminderVersion: 1,
+    reminderState: "scheduled",
+    scheduledAt: new Date(nowValue.getTime() - 60 * 60 * 1000),
+    remindTime: new Date(nowValue.getTime() + 60 * 60 * 1000),
+    deadlineAt: new Date(nowValue.getTime() + 60 * 60 * 1000),
+    remindTargets: ["father"],
+    title: "家长会",
+    content: "请按时参加",
+    category: "activity",
+  };
+  for (const notice of options.notices || [baseNotice]) notices.set(notice._id, structuredClone(notice));
+  for (const delivery of options.deliveries || []) deliveries.set(delivery.deliveryId || delivery._id, structuredClone(delivery));
+  for (const subscription of options.subscriptions || []) subscriptions.set(subscription.id || createSubscriptionId(subscription.openid, TODO_TEMPLATE_ID), structuredClone(subscription));
+  let sendIndex = 0;
+  const sendCalls = [];
+  let transactionQueue = Promise.resolve();
+  const command = {
+    in: (values) => ({ operator: "in", values }),
+    lte: (value) => ({ operator: "lte", value }),
+    gt: (value) => ({ operator: "gt", value }),
+  };
+  const database = {
+    command,
+    collection(name) { return createCollection(name, { notices, deliveries, subscriptions }, false); },
+    async runTransaction(callback) {
+      const result = transactionQueue.then(async () => {
+        const staged = { notices: cloneMap(notices), deliveries: cloneMap(deliveries), subscriptions: cloneMap(subscriptions) };
+        const value = await callback({ collection: (name) => createCollection(name, staged, true) });
+        replaceMap(notices, staged.notices);
+        replaceMap(deliveries, staged.deliveries);
+        replaceMap(subscriptions, staged.subscriptions);
+        return value;
+      });
+      transactionQueue = result.catch(() => {});
+      return result;
+    },
+  };
+  function cloneMap(source) {
+    return new Map([...source.entries()].map(([key, value]) => [key, structuredClone(value)]));
+  }
+  function replaceMap(target, source) {
+    target.clear();
+    for (const [key, value] of source.entries()) target.set(key, value);
+  }
+  function matches(record, query) {
+    return Object.entries(query).every(([key, expected]) => {
+      const actual = record[key];
+      if (expected && expected.operator === "in") return expected.values.includes(actual);
+      if (expected && expected.operator === "lte") return actual <= expected.value;
+      if (expected && expected.operator === "gt") return actual > expected.value;
+      return actual === expected;
+    });
+  }
+  function mapFor(name, stores) {
+    if (name === "notices") return stores.notices;
+    if (name === "reminder_deliveries") return stores.deliveries;
+    if (name === "message_subscriptions") return stores.subscriptions;
+    return null;
+  }
+  function createCollection(name, stores, inTransaction) {
+    const map = mapFor(name, stores);
+    if (!map) {
+      if (name === "users") {
+        return { where: (query) => queryUsers(query, users) };
+      }
+      throw new Error(`测试未实现集合：${name}`);
+    }
+    return {
+      where(query) { return queryRecords(query, [...map.values()]); },
+      doc(id) {
+        return {
+          async get() {
+            if (!map.has(id)) {
+              const error = new Error("document.get:fail document does not exist");
+              error.code = "DOCUMENT_NOT_FOUND";
+              throw error;
+            }
+            return { data: structuredClone(map.get(id)) };
+          },
+          async set({ data }) {
+            assert.equal(inTransaction, true, "调度写入必须在事务中完成");
+            map.set(id, structuredClone(data));
+          },
+          async update({ data }) {
+            assert.equal(map.has(id), true, `文档 ${id} 应存在`);
+            map.set(id, { ...map.get(id), ...structuredClone(data) });
+          },
+        };
+      },
+    };
+  }
+  function queryUsers(query, source) {
+    return queryRecords(query, source);
+  }
+  function queryRecords(query, source) {
+    let rows = source.filter((record) => matches(record, query));
+    const chain = {
+      orderBy(_field, direction) {
+        rows = [...rows].sort((left, right) => direction === "asc" ? left.scheduledAt - right.scheduledAt : right.scheduledAt - left.scheduledAt);
+        return chain;
+      },
+      skip(count) { rows = rows.slice(count); return chain; },
+      limit(count) { rows = rows.slice(0, count); return chain; },
+      async get() { return { data: structuredClone(rows) }; },
+      async count() { return { total: rows.length }; },
+    };
+    return chain;
+  }
+  const dependencies = {
+    database,
+    now: () => new Date(nowValue),
+    miniprogramState: options.miniprogramState === undefined ? "developer" : options.miniprogramState,
+    sendSubscribeMessage: async (payload) => {
+      sendCalls.push(payload);
+      if (typeof options.onSend === "function") options.onSend({ notices, deliveries, subscriptions, sendIndex });
+      const response = options.responses && options.responses[sendIndex] !== undefined ? options.responses[sendIndex] : { errCode: 0 };
+      sendIndex += 1;
+      if (response instanceof Error) throw response;
+      return response;
+    },
+  };
+  return {
+    database,
+    service: createReminderService(dependencies),
+    sendCalls,
+    notices,
+    deliveries,
+    subscriptions,
+    nowValue,
+    newService() { return createReminderService(dependencies); },
+  };
+}
+
+function schedulerDelivery(fixture, overrides = {}) {
+  const notice = fixture.notices.get("notice-1");
+  const deliveryId = createDeliveryId(notice._id, notice.reminderVersion, testUser.openid, TODO_TEMPLATE_ID);
+  const delivery = {
+    _id: deliveryId,
+    deliveryId,
+    noticeId: notice._id,
+    familyId: notice.familyId,
+    reminderVersion: notice.reminderVersion,
+    recipientOpenid: testUser.openid,
+    recipientRelation: "father",
+    templateId: TODO_TEMPLATE_ID,
+    scheduledAt: notice.scheduledAt,
+    deadlineAt: notice.deadlineAt,
+    status: "waiting_subscription",
+    attemptCount: 0,
+    nextAttemptAt: fixture.nowValue,
+    lockExpiresAt: null,
+    lastErrorCode: null,
+    lastErrorMessage: "",
+    sentAt: null,
+    quotaFinalized: false,
+    createdAt: fixture.nowValue,
+    updatedAt: fixture.nowValue,
+    ...overrides,
+  };
+  fixture.deliveries.set(deliveryId, delivery);
+  return delivery;
+}
+
+test("重复调度只物化一条接收人任务", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 0 }] });
+  const first = await fixture.service.run();
+  const second = await fixture.service.run();
+  assert.equal(first.createdDeliveries, 1);
+  assert.equal(second.createdDeliveries, 0);
+  assert.equal(fixture.deliveries.size, 1);
+  assert.equal(fixture.sendCalls.length, 0);
+});
+
+test("物化事务使用当前通知接收人而非扫描快照", async () => {
+  const mother = { openid: "openid-mother", familyId: testUser.familyId, role: "member", relation: "mother" };
+  const fixture = createSchedulerFixture({
+    users: [
+      { openid: testUser.openid, familyId: testUser.familyId, role: "creator", relation: "father" },
+      mother,
+    ],
+  });
+  const staleNotice = structuredClone(fixture.notices.get("notice-1"));
+  fixture.notices.get("notice-1").remindTargets = ["mother"];
+
+  await fixture.service.materializeNotice(staleNotice);
+
+  assert.equal(fixture.deliveries.size, 1);
+  assert.equal([...fixture.deliveries.values()][0].recipientOpenid, mother.openid);
+});
+
+test("没有预计授权时保持等待且不调用微信", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 0 }] });
+  await fixture.service.run();
+  assert.equal([...fixture.deliveries.values()][0].status, "waiting_subscription");
+  assert.equal(fixture.sendCalls.length, 0);
+});
+
+test("无匹配接收人时仍物化通知但不创建发送任务", async () => {
+  const fixture = createSchedulerFixture({ users: [] });
+
+  const result = await fixture.service.run();
+
+  assert.equal(result.createdDeliveries, 0);
+  assert.equal(fixture.notices.get("notice-1").reminderState, "materialized");
+  assert.equal(fixture.deliveries.size, 0);
+});
+
+test("发送成功写入已发送时间并只扣减一次", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }] });
+  const result = await fixture.service.run();
+  const delivery = [...fixture.deliveries.values()][0];
+  assert.equal(delivery.status, "sent");
+  assert.equal(delivery.sentAt.toISOString(), fixture.nowValue.toISOString());
+  assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
+  assert.equal(fixture.sendCalls.length, 1);
+  assert.equal(result.sent, 1);
+});
+
+test("已完成额度结算的占用不会重复恢复预计次数", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 0 }] });
+  const delivery = schedulerDelivery(fixture, { status: "sending", attemptCount: 1, quotaFinalized: true });
+
+  await fixture.service.completeDelivery({ ...delivery, subscriptionId }, {
+    ok: false,
+    category: "concurrent",
+    errCode: 43108,
+    error: { errCode: 43108 },
+  });
+
+  assert.equal(fixture.deliveries.get(delivery.deliveryId).status, "retry");
+  assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
+});
+
+test("并发占用同一任务只扣减一次预计次数", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }] });
+  const delivery = schedulerDelivery(fixture);
+
+  const claims = await Promise.all([
+    fixture.service.claimDelivery(delivery.deliveryId),
+    fixture.service.claimDelivery(delivery.deliveryId),
+  ]);
+
+  assert.equal(claims.filter(Boolean).length, 1);
+  assert.equal(fixture.deliveries.get(delivery.deliveryId).status, "sending");
+  assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
+});
+
+test("未知发送结果进入不确定且不自动重发", async () => {
+  const fixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    responses: [{}],
+  });
+  await fixture.service.run();
+  await fixture.service.run();
+  assert.equal([...fixture.deliveries.values()][0].status, "uncertain");
+  assert.equal(fixture.sendCalls.length, 1);
+});
+
+test("命中敏感词时使用安全模板重试一次", async () => {
+  const fixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    responses: [{ errCode: 45168 }, { errCode: 0 }],
+  });
+  await fixture.service.run();
+  assert.equal([...fixture.deliveries.values()][0].status, "sent");
+  assert.equal(fixture.sendCalls.length, 2);
+  assert.equal(fixture.sendCalls[1].data.thing1.value, "家庭待办");
+});
+
+test("安全模板重试仍命中敏感词时标记失败且不恢复额度", async () => {
+  const fixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    responses: [{ errCode: 45168 }, { errCode: 45168 }],
+  });
+
+  await fixture.service.run();
+
+  assert.equal([...fixture.deliveries.values()][0].status, "failed");
+  assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
+  assert.equal(fixture.sendCalls.length, 2);
+});
+
+test("明确失败恢复预计次数并记录终态或重试", async () => {
+  const concurrentFixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }], responses: [{ errCode: 43108 }] });
+  await concurrentFixture.service.run();
+  assert.equal([...concurrentFixture.deliveries.values()][0].status, "retry");
+  assert.equal(concurrentFixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 1);
+
+  const invalidFixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }], responses: [{ errCode: 47003 }] });
+  await invalidFixture.service.run();
+  assert.equal([...invalidFixture.deliveries.values()][0].status, "failed");
+  assert.equal(invalidFixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 1);
+});
+
+test("授权不足和系统阻断分别持久化额度与失败状态", async () => {
+  const authorizationFixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    responses: [{ errCode: 43101 }],
+  });
+  await authorizationFixture.service.run();
+  assert.equal([...authorizationFixture.deliveries.values()][0].status, "waiting_subscription");
+  assert.equal(authorizationFixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
+
+  const blockedFixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    responses: [{ errCode: 43107 }],
+  });
+  await blockedFixture.service.run();
+  assert.equal([...blockedFixture.deliveries.values()][0].status, "failed");
+  assert.equal(blockedFixture.subscriptions.get(subscriptionId).blockedReason, "SYSTEM_BLOCKED");
+  assert.equal(blockedFixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
+});
+
+test("临时错误恢复额度且退避不会越过截止时间", async () => {
+  const retryFixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    responses: [{ errCode: -1 }],
+  });
+  await retryFixture.service.run();
+  const retryDelivery = [...retryFixture.deliveries.values()][0];
+  assert.equal(retryDelivery.status, "retry");
+  assert.equal(retryDelivery.nextAttemptAt.toISOString(), new Date(retryFixture.nowValue.getTime() + 30 * 60 * 1000).toISOString());
+  assert.equal(retryFixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 1);
+
+  const deadlineFixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    responses: [{ errCode: -1 }],
+  });
+  deadlineFixture.notices.get("notice-1").deadlineAt = new Date(deadlineFixture.nowValue.getTime() + 15 * 60 * 1000);
+  deadlineFixture.notices.get("notice-1").remindTime = deadlineFixture.notices.get("notice-1").deadlineAt;
+  await deadlineFixture.service.run();
+  assert.equal([...deadlineFixture.deliveries.values()][0].status, "expired");
+  assert.equal(deadlineFixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 1);
+
+  const maximumFixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 0 }] });
+  const maximumDelivery = schedulerDelivery(maximumFixture, { status: "sending", attemptCount: 4 });
+  await maximumFixture.service.completeDelivery({ ...maximumDelivery, subscriptionId }, {
+    ok: false,
+    category: "temporary",
+    errCode: -1,
+    error: { errCode: -1 },
+  });
+  assert.equal(maximumFixture.deliveries.get(maximumDelivery.deliveryId).status, "expired");
+  assert.equal(maximumFixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 1);
+});
+
+test("通知版本或成员关系变化时取消发送", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }] });
+  const delivery = schedulerDelivery(fixture);
+  fixture.notices.get("notice-1").reminderVersion = 2;
+  fixture.notices.get("notice-1").reminderState = "materialized";
+  await fixture.service.run();
+  assert.equal(fixture.deliveries.get(delivery.deliveryId).status, "canceled");
+  assert.equal(fixture.sendCalls.length, 0);
+});
+
+test("通知删除优先于截止时间取消未发送任务", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }] });
+  const delivery = schedulerDelivery(fixture, { deadlineAt: new Date(fixture.nowValue.getTime() - 1) });
+  fixture.notices.get("notice-1").deleted = true;
+
+  await fixture.service.run();
+
+  assert.equal(fixture.deliveries.get(delivery.deliveryId).status, "canceled");
+  assert.equal(fixture.sendCalls.length, 0);
+});
+
+test("禁用通知或成员关系失效时取消待发送任务", async () => {
+  const disabledFixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }] });
+  const disabledDelivery = schedulerDelivery(disabledFixture);
+  disabledFixture.notices.get("notice-1").reminderState = "disabled";
+  await disabledFixture.service.run();
+  assert.equal(disabledFixture.deliveries.get(disabledDelivery.deliveryId).status, "canceled");
+
+  const users = [{ openid: testUser.openid, familyId: testUser.familyId, role: "creator", relation: "father" }];
+  const memberFixture = createSchedulerFixture({ users, subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }] });
+  const memberDelivery = schedulerDelivery(memberFixture);
+  users[0].relation = "mother";
+  await memberFixture.service.run();
+  assert.equal(memberFixture.deliveries.get(memberDelivery.deliveryId).status, "canceled");
+});
+
+test("所有目标发送成功后才完成通知汇总", async () => {
+  const mother = { openid: "openid-mother", familyId: testUser.familyId, role: "member", relation: "mother" };
+  const fixture = createSchedulerFixture({
+    users: [
+      { openid: testUser.openid, familyId: testUser.familyId, role: "creator", relation: "father" },
+      mother,
+    ],
+    subscriptions: [
+      { openid: testUser.openid, estimatedAvailableCount: 1 },
+      { openid: mother.openid, estimatedAvailableCount: 1 },
+    ],
+  });
+  fixture.notices.get("notice-1").remindTargets = ["father", "mother"];
+  await fixture.service.run();
+  assert.equal(fixture.notices.get("notice-1").reminderState, "completed");
+  assert.equal(fixture.notices.get("notice-1").isReminded, true);
+  assert.equal(fixture.sendCalls.length, 2);
+});
+
+test("旧版本发送完成不会覆盖新版本通知汇总", async () => {
+  const fixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    onSend: ({ notices }) => {
+      const notice = notices.get("notice-1");
+      notice.reminderVersion = 2;
+      notice.reminderState = "materialized";
+      notice.isReminded = false;
+    },
+  });
+
+  await fixture.service.run();
+
+  assert.equal(fixture.notices.get("notice-1").reminderVersion, 2);
+  assert.equal(fixture.notices.get("notice-1").reminderState, "materialized");
+  assert.equal(fixture.notices.get("notice-1").isReminded, false);
+});
+
+test("系统阻断状态持久化并可被新服务实例读取", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }], responses: [{ errCode: 43107 }] });
+  await fixture.service.run();
+  assert.equal((await fixture.newService().getStatus(testUser)).blockedReason, "SYSTEM_BLOCKED");
+});
+
+test("已过期任务不调用微信", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }] });
+  const expired = schedulerDelivery(fixture, { deadlineAt: new Date(fixture.nowValue.getTime() - 1) });
+  fixture.notices.get("notice-1").reminderState = "materialized";
+  await fixture.service.run();
+  assert.equal(fixture.deliveries.get(expired.deliveryId).status, "expired");
+  assert.equal(fixture.sendCalls.length, 0);
+});
+
+test("发送锁过期后转为不确定且不自动重发", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 0 }] });
+  const delivery = schedulerDelivery(fixture, {
+    status: "sending",
+    attemptCount: 1,
+    lockExpiresAt: new Date(fixture.nowValue.getTime() - 1),
+  });
+  fixture.notices.get("notice-1").reminderState = "materialized";
+
+  await fixture.service.run();
+  await fixture.service.run();
+
+  assert.equal(fixture.deliveries.get(delivery.deliveryId).status, "uncertain");
+  assert.equal(fixture.sendCalls.length, 0);
 });
