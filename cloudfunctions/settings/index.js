@@ -24,6 +24,11 @@ function cleanReminderTargets(value, fallback = []) {
   if (!Array.isArray(value)) return fallback;
   return [...new Set(value.filter((item) => VALID_REMINDER_TARGETS.has(item)))];
 }
+function normalizeReminderDefaultAdvance(value) {
+  if (!Array.isArray(value) || value.length !== 1) return null;
+  const advance = Number(value[0]);
+  return Number.isInteger(advance) && [120, 1440].includes(advance) ? advance : null;
+}
 
 async function requireUser(openid) {
   if (!openid) throw new Error("UNAUTHORIZED");
@@ -43,13 +48,14 @@ async function getSettings(familyId) {
 }
 
 function publicSettings(value) {
+  const reminderAdvance = normalizeReminderDefaultAdvance(value && value.reminderDefaultAdvance);
   return {
     aiEnabled: value ? value.aiEnabled === true : false,
     aiProvider: value && VALID_PROVIDERS.has(value.aiProvider) ? value.aiProvider : "deepseek",
     aiBaseUrl: value ? value.aiBaseUrl || "" : "",
     aiModel: value ? value.aiModel || "" : "",
     aiKeyConfigured: false,
-    reminderDefaultAdvance: value && Array.isArray(value.reminderDefaultAdvance) ? value.reminderDefaultAdvance : [1440, 120],
+    reminderDefaultAdvance: reminderAdvance === null ? [120] : [reminderAdvance],
     reminderTargets: value && Array.isArray(value.reminderTargets) ? cleanReminderTargets(value.reminderTargets) : ["father", "mother"],
     allowMemberEditSettings: value ? value.allowMemberEditSettings === true : false,
   };
@@ -73,7 +79,9 @@ async function updatePreferences(user, event) {
   const currentPublic = publicSettings(current);
   const canManageAi = user.role === "creator";
   const provider = VALID_PROVIDERS.has(event.aiProvider) ? event.aiProvider : "deepseek";
-  const reminderDefaultAdvance = Array.isArray(event.reminderDefaultAdvance) ? [...new Set(event.reminderDefaultAdvance.map(Number).filter((value) => [1440, 120].includes(value)))] : [1440, 120];
+  const requestedAdvance = event.reminderDefaultAdvance === undefined ? 120 : normalizeReminderDefaultAdvance(event.reminderDefaultAdvance);
+  if (requestedAdvance === null) return failure("默认提醒时间只能选择一个");
+  const reminderDefaultAdvance = [requestedAdvance];
   const reminderTargets = cleanReminderTargets(event.reminderTargets);
   const data = {
     familyId: user.familyId,

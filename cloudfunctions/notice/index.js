@@ -1,4 +1,5 @@
 const cloud = require("wx-server-sdk");
+const { normalizeAdvance, buildReminderFields } = require("./reminder-policy");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
@@ -43,9 +44,7 @@ function validatePayload(event) {
   const semester = cleanText(event.semester, 8);
   const category = cleanText(event.category, 32);
   const images = Array.isArray(event.images) ? event.images.slice(0, 9) : [];
-  const remindAdvance = Array.isArray(event.remindAdvance)
-    ? [...new Set(event.remindAdvance.map(Number).filter((value) => Number.isInteger(value) && value >= 0 && value <= 43200))].slice(0, 2)
-    : [];
+  const remindAdvance = normalizeAdvance(event.remindAdvance);
   const remindTargets = Array.isArray(event.remindTargets)
     ? [...new Set(event.remindTargets.filter((value) => VALID_REMINDER_TARGETS.has(value)))]
     : [];
@@ -53,7 +52,8 @@ function validatePayload(event) {
   if (!title || !/^\d{4}(上|下)$/.test(semester) || !VALID_CATEGORIES.has(category)) return { error: "请完整填写标题、学期和分类" };
   if (images.some((item) => typeof item !== "string" || !item.startsWith("cloud://"))) return { error: "图片地址格式不正确" };
   if (remindTime && Number.isNaN(remindTime.getTime())) return { error: "提醒时间格式不正确" };
-  return { data: { semester, title, content: cleanText(event.content, 3000), images, source: cleanText(event.source, 60), category, remindTime, remindAdvance, remindTargets, isReminded: false } };
+  if (remindTime && remindAdvance === null) return { error: "每条通知只能选择一个提醒时间" };
+  return { data: { semester, title, content: cleanText(event.content, 3000), images, source: cleanText(event.source, 60), category, remindTime, remindAdvance: remindAdvance === null ? [] : [remindAdvance], remindTargets } };
 }
 
 async function list(user, event) {
@@ -86,8 +86,22 @@ async function save(user, event, updating) {
   if (updating) {
     const item = await findNotice(cleanText(event.id, 64), user.familyId);
     if (!item) return failure("通知不存在或无权编辑");
+    try {
+      Object.assign(payload.data, buildReminderFields(payload.data, item));
+    } catch (error) {
+      if (error.message === "INVALID_ADVANCE") return failure("每条通知只能选择一个提醒时间");
+      if (error.message === "MISSING_TARGETS") return failure("请至少选择一个提醒对象");
+      throw error;
+    }
     await db.collection("notices").doc(item._id).update({ data: payload.data });
     return success({ id: item._id }, "通知已更新");
+  }
+  try {
+    Object.assign(payload.data, buildReminderFields(payload.data));
+  } catch (error) {
+    if (error.message === "INVALID_ADVANCE") return failure("每条通知只能选择一个提醒时间");
+    if (error.message === "MISSING_TARGETS") return failure("请至少选择一个提醒对象");
+    throw error;
   }
   const result = await db.collection("notices").add({ data: { familyId: user.familyId, ...payload.data, createdAt: new Date(), createdBy: user.openid, createdByName: RELATION_NAMES[user.relation] || user.nickname } });
   return success({ id: result._id }, "通知已保存");

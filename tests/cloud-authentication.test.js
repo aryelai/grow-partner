@@ -51,6 +51,18 @@ function loadCloudFunction(name, options = {}) {
     require(request) {
       if (request === "wx-server-sdk") return cloud;
       if (request === "crypto") return require("node:crypto");
+      if (name === "notice" && request === "./reminder-policy") {
+        const policyPath = path.join(__dirname, "../cloudfunctions/notice/reminder-policy.js");
+        const policyModule = { exports: {} };
+        const policyContext = vm.createContext({
+          Date,
+          Error,
+          module: policyModule,
+          exports: policyModule.exports,
+        });
+        vm.runInContext(fs.readFileSync(policyPath, "utf8"), policyContext, { filename: policyPath });
+        return policyModule.exports;
+      }
       throw new Error(`测试未实现依赖：${request}`);
     },
   });

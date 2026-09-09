@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { buildReminderFields } = require("../cloudfunctions/notice/reminder-policy");
 
 function loadNoticeFunction() {
   const sourcePath = path.join(__dirname, "../cloudfunctions/notice/index.js");
@@ -62,58 +63,61 @@ function loadNoticeFunction() {
     },
   });
   vm.runInContext(source, context, { filename: sourcePath });
-  return {
-    main: moduleValue.exports.main,
-    getCreatedNotice: () => createdNotice,
-  };
+  return { main: moduleValue.exports.main, getCreatedNotice: () => createdNotice };
 }
 
-test("通知提醒对象只保存受支持的家庭关系", async () => {
+test("提前两小时生成调度时间和首个提醒版本", async () => {
   const fixture = loadNoticeFunction();
-
   const result = await fixture.main({
     action: "create",
     semester: "2026下",
-    title: "测试通知",
-    category: "other",
-    remindAdvance: [1440],
-    remindTargets: ["father", "unsupported", "child"],
+    title: "家长会",
+    category: "activity",
+    remindTime: "2026-09-10T12:00:00.000Z",
+    remindAdvance: [120],
+    remindTargets: ["father"],
   });
 
   assert.equal(result.success, true);
-  assert.deepEqual([...fixture.getCreatedNotice().remindTargets], ["father", "child"]);
+  assert.equal(fixture.getCreatedNotice().scheduledAt.toISOString(), "2026-09-10T10:00:00.000Z");
+  assert.equal(fixture.getCreatedNotice().reminderVersion, 1);
+  assert.equal(fixture.getCreatedNotice().reminderState, "scheduled");
+  assert.equal(fixture.getCreatedNotice().isReminded, false);
 });
 
-test("通知只接受一个有效提前时间", async () => {
-  const fixture = loadNoticeFunction();
-
-  const result = await fixture.main({
-    action: "create",
-    semester: "2026下",
-    title: "家长会",
-    category: "activity",
-    remindTime: "2026-09-10T12:00:00.000Z",
-    remindAdvance: [1440, 120],
+test("历史通知重新开启提醒时从首个版本开始调度", () => {
+  const fields = buildReminderFields({
+    remindTime: new Date("2026-09-10T12:00:00.000Z"),
+    remindAdvance: [1440],
     remindTargets: ["father"],
+  }, {
+    remindTime: null,
+    remindAdvance: [],
+    remindTargets: [],
   });
 
-  assert.equal(result.success, false);
-  assert.equal(result.message, "每条通知只能选择一个提醒时间");
+  assert.equal(fields.reminderVersion, 1);
+  assert.equal(fields.reminderState, "scheduled");
+  assert.equal(fields.scheduledAt.toISOString(), "2026-09-09T12:00:00.000Z");
 });
 
-test("通知拒绝混入无效值的提前时间", async () => {
-  const fixture = loadNoticeFunction();
-
-  const result = await fixture.main({
-    action: "create",
-    semester: "2026下",
-    title: "家长会",
-    category: "activity",
-    remindTime: "2026-09-10T12:00:00.000Z",
-    remindAdvance: [120, "invalid"],
+test("仅修改通知标题不创建新的提醒版本", () => {
+  const fields = buildReminderFields({
+    title: "更新后的家长会标题",
+    remindTime: new Date("2026-09-10T12:00:00.000Z"),
+    remindAdvance: [120],
     remindTargets: ["father"],
+  }, {
+    title: "原家长会标题",
+    remindTime: new Date("2026-09-10T12:00:00.000Z"),
+    remindAdvance: [120],
+    remindTargets: ["father"],
+    reminderVersion: 2,
+    reminderState: "materialized",
+    isReminded: true,
   });
 
-  assert.equal(result.success, false);
-  assert.equal(result.message, "每条通知只能选择一个提醒时间");
+  assert.equal(fields.reminderVersion, 2);
+  assert.equal(fields.reminderState, "materialized");
+  assert.equal(fields.isReminded, true);
 });

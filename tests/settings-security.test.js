@@ -131,3 +131,46 @@ test("提醒对象只保存受支持的家庭关系", async () => {
   assert.equal(result.success, true);
   assert.deepEqual([...fixture.getUpdatedSettings().reminderTargets], ["father", "child"]);
 });
+
+test("家庭默认提醒只保存一个有效值", async () => {
+  const fixture = loadSettingsFunction({ role: "creator", currentSettings: null });
+
+  const result = await fixture.main({
+    action: "updatePreferences",
+    reminderDefaultAdvance: [1440, 120],
+    reminderTargets: ["father"],
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.message, "默认提醒时间只能选择一个");
+});
+
+test("家庭默认提醒拒绝混入无效值", async () => {
+  const fixture = loadSettingsFunction({ role: "creator", currentSettings: null });
+
+  const result = await fixture.main({
+    action: "updatePreferences",
+    reminderDefaultAdvance: [120, "invalid"],
+    reminderTargets: ["father"],
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.message, "默认提醒时间只能选择一个");
+});
+
+test("读取历史家庭设置时默认提醒始终是一个有效值", async () => {
+  const fixture = loadSettingsFunction({
+    role: "creator",
+    currentSettings: {
+      _id: "settings-id",
+      familyId: "family-id",
+      reminderDefaultAdvance: [1440, 120],
+      reminderTargets: ["father"],
+    },
+  });
+
+  const result = await fixture.main({ action: "get" });
+
+  assert.equal(result.success, true);
+  assert.deepEqual([...result.data.settings.reminderDefaultAdvance], [120]);
+});
