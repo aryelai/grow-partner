@@ -267,10 +267,10 @@ for (const miniprogramState of ["developer", "trial", "formal", "", "production"
   });
 }
 
-test("服务占位调度返回明确原因且不访问数据库或发送消息", async () => {
+test("调度集合不可用时返回兼容性跳过结果", async () => {
   const fixture = createFixture();
   assert.deepEqual(await fixture.service.run(), { skipped: true, reason: "SCHEDULER_NOT_IMPLEMENTED" });
-  assert.equal(fixture.getAccessCount(), 0);
+  assert.ok(fixture.getAccessCount() > 0);
 });
 
 for (const source of ["wx_client", "wx_devtools", "wx_client,wx_trigger", "wx_trigger,wx_client", "wx_trigger,wx_devtools", "wx_server", undefined]) {
@@ -283,14 +283,14 @@ for (const source of ["wx_client", "wx_devtools", "wx_client,wx_trigger", "wx_tr
   });
 }
 
-test("只有顶层定时来源直接执行占位调度且无需用户或动作", async () => {
+test("只有顶层定时来源直接执行调度且无需用户或动作", async () => {
   const fixture = loadReminderFunction({ context: { SOURCE: "wx_trigger", OPENID: undefined } });
   for (const event of [{}, { action: "recordSubscription" }]) {
     const result = await fixture.main(event);
     assert.equal(result.success, true);
     assert.equal(result.data.reason, "SCHEDULER_NOT_IMPLEMENTED");
   }
-  assert.equal(fixture.getAccessCount(), 0);
+  assert.ok(fixture.getAccessCount() > 0);
 });
 
 test("客户端开放状态与登记且只使用微信认证身份", async () => {
