@@ -220,8 +220,7 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
         await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "canceled", updatedAt: currentTime, lockExpiresAt: null } });
         return { terminalStatus: "canceled" };
       }
-      if (notice.reminderState === "scheduled") return null;
-      if (notice.reminderState !== "materialized") {
+      if (!["scheduled", "materialized"].includes(notice.reminderState)) {
         await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "canceled", updatedAt: currentTime, lockExpiresAt: null } });
         return { terminalStatus: "canceled" };
       }
@@ -234,6 +233,7 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
         await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "canceled", updatedAt: currentTime, lockExpiresAt: null } });
         return { terminalStatus: "canceled" };
       }
+      if (notice.reminderState === "scheduled") return null;
       if (!deadline) {
         await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "canceled", updatedAt: currentTime, lockExpiresAt: null } });
         return { terminalStatus: "canceled" };

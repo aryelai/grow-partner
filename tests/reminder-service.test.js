@@ -623,6 +623,35 @@ test("物化中间态的合法任务暂缓占用并在封印后发送", async ()
   assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
 });
 
+for (const scenario of [
+  { name: "成员退出", change: ({ users }) => users.splice(0, 1) },
+  { name: "成员家庭变更", change: ({ users }) => { users[0] = { ...users[0], familyId: "another-family" }; } },
+  { name: "成员关系变更", change: ({ users }) => { users[0] = { ...users[0], relation: "mother" }; } },
+  { name: "成员角色失效", change: ({ users }) => { users[0] = { ...users[0], role: "invalid" }; } },
+  { name: "成员 OpenID 变更", change: ({ users }) => { users[0] = { ...users[0], openid: "another-openid" }; } },
+  { name: "提醒目标移除", change: ({ notices }) => { notices.get("notice-1").remindTargets = ["mother"]; } },
+]) {
+  test(`物化中间态在候选查询后${scenario.name}立即取消且不扣额度`, async () => {
+    const fixture = createSchedulerFixture({
+      subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+      onQueryGet: (context) => {
+        if (context.name === "users") scenario.change(context);
+      },
+    });
+    fixture.notices.get("notice-1").remindTargets = ["father", "mother"];
+    const delivery = schedulerDelivery(fixture);
+
+    const claim = await fixture.service.claimDelivery(delivery.deliveryId);
+
+    assert.deepEqual(claim, { terminalStatus: "canceled" });
+    assert.equal(fixture.deliveries.get(delivery.deliveryId).status, "canceled");
+    assert.equal(fixture.deliveries.get(delivery.deliveryId).attemptCount, 0);
+    assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 1);
+    assert.equal(fixture.notices.get("notice-1").reminderState, "scheduled");
+    assert.equal(fixture.sendCalls.length, 0);
+  });
+}
+
 test("没有预计授权时保持等待且不调用微信", async () => {
   const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 0 }] });
   await fixture.service.run();
