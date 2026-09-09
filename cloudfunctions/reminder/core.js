@@ -61,11 +61,13 @@ function formatTemplateTime(remindTime) {
 function buildTemplateData(notice) {
   const formattedTime = formatTemplateTime(notice && notice.remindTime);
   const category = CATEGORY_NAMES[notice && notice.category] || CATEGORY_NAMES.other;
+  const title = truncateThing(notice && notice.title) || "家庭待办";
+  const content = normalizeText(notice && notice.content) || "请进入小程序查看详情";
 
   return {
-    thing1: { value: truncateThing(notice && notice.title) },
+    thing1: { value: title },
     time2: { value: formattedTime.time },
-    thing4: { value: truncateThing(`${formattedTime.date}·${normalizeText(notice && notice.content)}`) },
+    thing4: { value: truncateThing(`${formattedTime.date}·${content}`) },
     thing15: { value: truncateThing(category) },
     phrase25: { value: "待处理" },
   };

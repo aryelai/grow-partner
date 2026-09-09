@@ -42,6 +42,29 @@ test("模板文本移除控制字符并压缩空白", () => {
   assert.equal(data.thing4.value, "09月10日·请家长 提前 十分钟到校");
 });
 
+test("普通模板空标题回退为家庭待办", () => {
+  const data = buildTemplateData({
+    title: " \u0000\n\t ",
+    content: "请家长参加",
+    category: "activity",
+    remindTime: new Date("2026-09-10T12:30:00.000Z"),
+  });
+
+  assert.equal(data.thing1.value, "家庭待办");
+});
+
+test("普通模板空正文回退为详情提示", () => {
+  const data = buildTemplateData({
+    title: "家长会",
+    content: " \u0000\n\t ",
+    category: "activity",
+    remindTime: new Date("2026-09-10T12:30:00.000Z"),
+  });
+
+  assert.equal(data.thing4.value, "09月10日·请进入小程序查看详情");
+  assert.ok(Array.from(data.thing4.value).length <= 20);
+});
+
 test("thing 字段按 20 个 Unicode 码点截断", () => {
   const data = buildTemplateData({
     title: "1234567890123456789😀X",
