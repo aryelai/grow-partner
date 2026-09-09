@@ -451,7 +451,7 @@ function createSchedulerFixture(options = {}) {
     return {
       where(query) {
         if (inTransaction) throw new Error("事务不支持 where");
-        return queryRecords(query, [...map.values()]);
+        return queryRecords(name, query, [...map.values()]);
       },
       doc(id) {
         return {
@@ -476,9 +476,9 @@ function createSchedulerFixture(options = {}) {
     };
   }
   function queryUsers(query, source) {
-    return queryRecords(query, source);
+    return queryRecords("users", query, source);
   }
-  function queryRecords(query, source) {
+  function queryRecords(name, query, source) {
     let rows = source.filter((record) => matches(record, query));
     const chain = {
       orderBy(_field, direction) {
@@ -487,7 +487,12 @@ function createSchedulerFixture(options = {}) {
       },
       skip(count) { rows = rows.slice(count); return chain; },
       limit(count) { rows = rows.slice(0, count); return chain; },
-      async get() { return { data: structuredClone(rows) }; },
+      async get() {
+        if (typeof options.onQueryGet === "function") {
+          await options.onQueryGet({ name, query, notices, deliveries, subscriptions, users });
+        }
+        return { data: structuredClone(rows) };
+      },
       async count() { return { total: rows.length }; },
     };
     return chain;
@@ -573,6 +578,49 @@ test("物化事务使用当前通知接收人而非扫描快照", async () => {
 
   assert.equal(fixture.deliveries.size, 1);
   assert.equal([...fixture.deliveries.values()][0].recipientOpenid, mother.openid);
+});
+
+test("物化封印阻止汇总候选读取后的新成员任务覆盖完成状态", async () => {
+  const mother = { openid: "openid-mother", familyId: testUser.familyId, role: "member", relation: "mother" };
+  let fixture;
+  let intercepted = false;
+  fixture = createSchedulerFixture({
+    users: [{ openid: testUser.openid, familyId: testUser.familyId, role: "creator", relation: "father" }],
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }],
+    onQueryGet: async ({ name, query }) => {
+      if (intercepted || name !== "reminder_deliveries" || query.noticeId !== "notice-1") return;
+      intercepted = true;
+      fixture.users.push({ ...mother, _id: "user-mother" });
+      await fixture.service.materializeNotice(fixture.notices.get("notice-1"));
+    },
+  });
+  fixture.notices.get("notice-1").remindTargets = ["father", "mother"];
+
+  await fixture.service.run();
+
+  const deliveries = [...fixture.deliveries.values()];
+  assert.equal(intercepted, true);
+  assert.equal(fixture.notices.get("notice-1").reminderState, "completed");
+  assert.equal(deliveries.some((delivery) => delivery.status === "waiting_subscription"), false);
+  assert.equal(deliveries.length, 1);
+});
+
+test("物化中间态的合法任务暂缓占用并在封印后发送", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }] });
+  const delivery = schedulerDelivery(fixture);
+
+  const pendingClaim = await fixture.service.claimDelivery(delivery.deliveryId);
+
+  assert.equal(pendingClaim, null);
+  assert.equal(fixture.deliveries.get(delivery.deliveryId).status, "waiting_subscription");
+  assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 1);
+
+  fixture.notices.get("notice-1").reminderState = "materialized";
+  const finalizedClaim = await fixture.service.claimDelivery(delivery.deliveryId);
+
+  assert.ok(finalizedClaim);
+  assert.equal(fixture.deliveries.get(delivery.deliveryId).status, "sending");
+  assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
 });
 
 test("没有预计授权时保持等待且不调用微信", async () => {

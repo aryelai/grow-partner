@@ -146,7 +146,7 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
         if (!currentNotice || currentNotice.deleted || !currentUser) return 0;
         const currentVersion = Number.isInteger(currentNotice.reminderVersion) ? currentNotice.reminderVersion : 1;
         const targets = Array.isArray(currentNotice.remindTargets) ? currentNotice.remindTargets : [];
-        if (currentVersion !== version || !["scheduled", "materialized"].includes(currentNotice.reminderState)
+        if (currentVersion !== version || currentNotice.reminderState !== "scheduled"
           || currentUser.familyId !== currentNotice.familyId || !currentUser.openid
           || !VALID_ROLES.has(currentUser.role) || !targets.includes(currentUser.relation)) return 0;
         const deadlineAt = getDeadline(currentNotice);
@@ -216,8 +216,12 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
       if (!["waiting_subscription", "retry"].includes(delivery.status)) return null;
       const notice = await readDoc(transaction, "notices", delivery.noticeId);
       if (!notice || notice.deleted || notice.familyId !== delivery.familyId
-        || notice.reminderState !== "materialized"
         || Number(notice.reminderVersion || 1) !== Number(delivery.reminderVersion)) {
+        await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "canceled", updatedAt: currentTime, lockExpiresAt: null } });
+        return { terminalStatus: "canceled" };
+      }
+      if (notice.reminderState === "scheduled") return null;
+      if (notice.reminderState !== "materialized") {
         await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: { status: "canceled", updatedAt: currentTime, lockExpiresAt: null } });
         return { terminalStatus: "canceled" };
       }
@@ -324,7 +328,7 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
       .filter((deliveryId) => typeof deliveryId === "string" && deliveryId);
     await database.runTransaction(async (transaction) => {
       const notice = await readDoc(transaction, "notices", noticeId);
-      if (!notice || Number(notice.reminderVersion || 1) !== Number(version)) return;
+      if (!notice || notice.reminderState !== "materialized" || Number(notice.reminderVersion || 1) !== Number(version)) return;
       const deliveries = await Promise.all(deliveryIds.map((deliveryId) => readDoc(transaction, "reminder_deliveries", deliveryId)));
       if (deliveries.length > 0 && deliveries.every((delivery) => delivery && delivery.status === "sent")) {
         await transaction.collection("notices").doc(noticeId).update({ data: { reminderState: "completed", isReminded: true, updatedAt: now() } });
