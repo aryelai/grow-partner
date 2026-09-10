@@ -8,6 +8,10 @@ const { requestReminderSubscription, shouldRequestSubscription } = require("../.
 const VALID_ADVANCES = new Set([120, 1440]);
 const REMINDER_RELATIONS = Object.entries(RELATIONS).map(([value, label]) => ({ value, label }));
 
+function hasRelation(value) {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(RELATIONS, value);
+}
+
 function normalizeAdvance(value, fallback = 120) {
   const values = Array.isArray(value) ? value : [value];
   const advance = values.map(Number).find((item) => VALID_ADVANCES.has(item));
@@ -16,7 +20,7 @@ function normalizeAdvance(value, fallback = 120) {
 
 function normalizeTargets(value) {
   const values = Array.isArray(value) ? value : [];
-  return [...new Set(values.filter((item) => typeof item === "string" && RELATIONS[item]))];
+  return [...new Set(values.filter(hasRelation))];
 }
 
 function createReminderRelations(targets) {
@@ -38,7 +42,13 @@ function reminderSettings(data) {
 }
 
 function getErrorContext(error) {
-  const message = String((error && (error.message || error.errMsg)) || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+  const message = String((error && (error.message || error.errMsg)) || "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b(token|cookie|password|secret|key|openid)\b\s*([=:])\s*(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)/gi, "$1$2[REDACTED]")
+    .replace(/\bo[A-Za-z0-9_-]{20,}\b/g, "[REDACTED]")
+    .slice(0, 160);
   const code = typeof (error && error.code) === "string" ? error.code.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) : "";
   return { message, code };
 }
@@ -223,5 +233,5 @@ Page({
     catch (error) { showError(error, "通知保存失败"); }
     finally { this.releaseSaveLock(); }
   },
-  async remove() { if (!await this.refreshPermission()) return; wx.showModal({ title: "删除通知", content: "删除后无法恢复，确认继续吗？", success: async (result) => { if (!result.confirm) return; if (!await this.refreshPermission()) return; try { await callFunction("notice", "remove", { id: this.data.id }); wx.navigateBack(); } catch (error) { showError(error); } } }); },
+  async remove() { if (this.isFormLocked() || !await this.refreshPermission()) return; wx.showModal({ title: "删除通知", content: "删除后无法恢复，确认继续吗？", success: async (result) => { if (!result.confirm) return; if (!await this.refreshPermission()) return; try { await callFunction("notice", "remove", { id: this.data.id }); wx.navigateBack(); } catch (error) { showError(error); } } }); },
 });

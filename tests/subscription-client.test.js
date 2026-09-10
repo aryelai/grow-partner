@@ -844,3 +844,175 @@ test("订阅登记失败时保留云函数错误码上下文", async () => {
   assert.equal(reportedErrors[0].code, "RECORD_FAILED");
   assert.deepEqual(JSON.parse(JSON.stringify(logs[0][1])), { message: "订阅登记失败", errMsg: "", code: "RECORD_FAILED", errCode: "" });
 });
+
+test("编辑通知加载期间不显示删除确认或发起删除", async () => {
+  const events = [];
+  const modals = [];
+  const notice = createDeferred();
+  const fixture = createNoticePage("notice-edit", {
+    api: {
+      callFunction(name, action) {
+        events.push(`${name}.${action}`);
+        if (name === "settings") return Promise.resolve({ settings: {} });
+        if (name === "reminder") return Promise.resolve(createReminderStatus());
+        if (name === "notice" && action === "get") return notice.promise;
+        if (name === "notice" && action === "remove") throw new Error("初始化期间不应删除通知");
+        throw new Error(`不应调用：${name}.${action}`);
+      },
+      showError(error) { throw error; },
+      uploadFile: async () => "cloud://image",
+    },
+    wx: { showToast() {}, showModal(options) { modals.push(options); }, navigateBack() {}, navigateTo() {}, previewImage() {} },
+  });
+
+  const loading = fixture.pageConfig.onLoad.call(fixture.page, { id: "notice-id" });
+  await new Promise((resolve) => setImmediate(resolve));
+  await fixture.pageConfig.remove.call(fixture.page);
+
+  assert.equal(fixture.page.data.initializing, true);
+  assert.deepEqual(modals, []);
+  assert.deepEqual(events, ["settings.get", "reminder.getStatus", "notice.get"]);
+
+  notice.resolve({ _id: "notice-id", category: "other" });
+  await loading;
+  assert.equal(fixture.page.data.initializing, false);
+});
+
+test("编辑加载失败后删除和保存均不会写入", async () => {
+  const calls = [];
+  const modals = [];
+  const fixture = createNoticePage("notice-edit", {
+    api: {
+      callFunction(name, action) {
+        calls.push(`${name}.${action}`);
+        if (name === "settings") return Promise.resolve({ settings: {} });
+        if (name === "reminder") return Promise.resolve(createReminderStatus());
+        if (name === "notice" && action === "get") return Promise.reject(new Error("通知读取失败"));
+        throw new Error(`加载失败后不应调用：${name}.${action}`);
+      },
+      showError() {},
+      uploadFile: async () => "cloud://image",
+    },
+    wx: { showToast() {}, showModal(options) { modals.push(options); }, navigateBack() {}, navigateTo() {}, previewImage() {} },
+  });
+
+  await fixture.pageConfig.onLoad.call(fixture.page, { id: "notice-id" });
+  fixture.page.data.form.title = "家长会";
+  fixture.pageConfig.save.call(fixture.page);
+  await fixture.pageConfig.remove.call(fixture.page);
+
+  assert.equal(fixture.page.data.initializationFailed, true);
+  assert.deepEqual(modals, []);
+  assert.deepEqual(calls, ["settings.get", "reminder.getStatus", "notice.get"]);
+});
+
+test("原型链关系键不能触发订阅授权", () => {
+  const input = {
+    reminderEnabled: true,
+    estimatedAvailableCount: 0,
+    templateId: "template-id",
+  };
+
+  for (const relation of ["constructor", "toString", "__proto__"]) {
+    assert.equal(shouldRequestSubscription({ ...input, currentRelation: relation, remindTargets: [relation] }), false, relation);
+  }
+  assert.equal(shouldRequestSubscription({ ...input, currentRelation: "father", remindTargets: ["father"] }), true);
+});
+
+test("通知详情忽略原型链关系键并保留合法关系", async () => {
+  const fixture = createNoticePage("notice-detail", {
+    api: {
+      callFunction() { return Promise.resolve({ _id: "notice-id", category: "other", remindTargets: ["constructor", "toString", "__proto__", "father"] }); },
+      showError() {},
+      uploadFile: async () => "cloud://image",
+    },
+  });
+
+  await fixture.pageConfig.onLoad.call(fixture.page, { id: "notice-id" });
+
+  assert.equal(fixture.page.data.item.targetText, "爸爸");
+});
+
+test("提醒状态错误日志不包含敏感凭据", async () => {
+  const logs = [];
+  const secretValues = ["token-secret", "sid-private", "hunter2", "server-secret", "api-key-secret", "o12345678901234567890123456789012"];
+  const fixture = createNoticePage("notice-edit", {
+    api: {
+      callFunction(name) {
+        if (name === "settings") return Promise.resolve({ settings: {} });
+        return Promise.reject({
+          message: `状态失败 token=${secretValues[0]} Cookie: ${secretValues[1]} password=${secretValues[2]} secret=${secretValues[3]} key=${secretValues[4]} openid=${secretValues[5]}`,
+          code: "STATUS_FAILED",
+        });
+      },
+      showError() {},
+      uploadFile: async () => "cloud://image",
+    },
+    console: { error(...args) { logs.push(args); } },
+  });
+
+  await fixture.pageConfig.onLoad.call(fixture.page, {});
+
+  assert.equal(logs[0][0], "Reminder status request failed");
+  assert.ok(logs[0][1].message.includes("状态失败"));
+  assert.ok(logs[0][1].message.length <= 160);
+  for (const value of secretValues) assert.equal(logs[0][1].message.includes(value), false, value);
+});
+
+test("通知详情将非日期提醒时间视为未设置", async () => {
+  for (const value of [0, false, [], {}, NaN, Infinity]) {
+    const fixture = createNoticePage("notice-detail", {
+      api: {
+        callFunction() { return Promise.resolve({ _id: "notice-id", category: "other", remindTime: value, remindAdvance: [120] }); },
+        showError() {},
+        uploadFile: async () => "cloud://image",
+      },
+    });
+
+    await fixture.pageConfig.onLoad.call(fixture.page, { id: "notice-id" });
+
+    assert.equal(fixture.page.data.item.hasReminder, false, String(value));
+    assert.equal(fixture.page.data.item.remindTimeText, "", String(value));
+  }
+});
+
+test("通知详情仍显示合法的日期、字符串和正数时间戳", async () => {
+  for (const value of [new Date("2026-09-10T08:00:00.000Z"), "2026-09-10T08:00:00.000Z", 1788796800000]) {
+    const fixture = createNoticePage("notice-detail", {
+      api: {
+        callFunction() { return Promise.resolve({ _id: "notice-id", category: "other", remindTime: value, remindAdvance: [120] }); },
+        showError() {},
+        uploadFile: async () => "cloud://image",
+      },
+    });
+
+    await fixture.pageConfig.onLoad.call(fixture.page, { id: "notice-id" });
+
+    assert.equal(fixture.page.data.item.hasReminder, true, String(value));
+    assert.notEqual(fixture.page.data.item.remindTimeText, "", String(value));
+  }
+});
+
+test("提醒状态不可用时保存通知且不请求订阅", async () => {
+  const events = [];
+  const fixture = createNoticePage("notice-edit", {
+    api: {
+      callFunction(name, action) {
+        events.push(`${name}.${action}`);
+        if (name === "notice" && action === "create") return Promise.resolve({ id: "notice-id" });
+        throw new Error(`不应调用：${name}.${action}`);
+      },
+      showError(error) { throw error; },
+      uploadFile: async () => "cloud://image",
+    },
+    subscription: { requestReminderSubscription() { events.push("subscription.request"); return Promise.resolve({ decision: "accept" }); } },
+  });
+  prepareReminderSave(fixture);
+  fixture.page.data.reminderStatus = { enabled: false, templateId: "template-id", estimatedAvailableCount: 0, pendingCount: 0, blockedReason: "STATUS_UNAVAILABLE" };
+
+  await fixture.pageConfig.save.call(fixture.page);
+
+  assert.deepEqual(events, ["notice.create"]);
+  assert.equal(fixture.page.saveInProgress, false);
+  assert.equal(fixture.page.data.submitting, false);
+});

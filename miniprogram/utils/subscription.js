@@ -2,6 +2,10 @@ const VALID_DECISIONS = new Set(["accept", "reject", "ban", "filter"]);
 const { RELATIONS } = require("./constants");
 const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
+function hasRelation(value) {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(RELATIONS, value);
+}
+
 function createRequestId(now, randomValue) {
   const timestamp = Number.isFinite(now) && now >= 0 ? Math.floor(now) : Date.now();
   const random = Number.isFinite(randomValue) && randomValue >= 0 && randomValue < 1 ? randomValue : Math.random();
@@ -18,10 +22,9 @@ function getDecision(result, templateId) {
 
 function shouldRequestSubscription({ reminderEnabled, currentRelation, remindTargets, estimatedAvailableCount, templateId }) {
   return reminderEnabled === true
-    && typeof currentRelation === "string"
-    && Boolean(RELATIONS[currentRelation])
+    && hasRelation(currentRelation)
     && Array.isArray(remindTargets)
-    && remindTargets.includes(currentRelation)
+    && remindTargets.some((value) => value === currentRelation && hasRelation(value))
     && typeof estimatedAvailableCount === "number"
     && Number.isFinite(estimatedAvailableCount)
     && estimatedAvailableCount >= 0

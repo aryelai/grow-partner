@@ -17,5 +17,5 @@
     </view>
   </view>
   <button class="primary-button save" loading="{{submitting}}" disabled="{{submitting || uploading || initializing || initializationFailed}}" bindtap="save">{{needsSubscription ? '保存并订阅提醒' : '保存通知'}}</button>
-  <button wx:if="{{id}}" class="danger-button remove-button" bindtap="remove">删除通知</button>
+  <button wx:if="{{id && !initializing && !initializationFailed}}" class="danger-button remove-button" bindtap="remove">删除通知</button>
 </view>

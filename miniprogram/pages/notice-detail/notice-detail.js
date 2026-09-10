@@ -8,9 +8,18 @@ const NOTICE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const VALID_ADVANCES = new Set([120, 1440]);
 
 function getValidReminderTime(value) {
-  if (value === null || value === undefined || value === "") return null;
+  if (value instanceof Date) {
+    const date = new Date(value.getTime());
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value !== "string" && (typeof value !== "number" || !Number.isFinite(value) || value === 0)) return null;
+  if (typeof value === "string" && !value.trim()) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getRelationLabel(value) {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(RELATIONS, value) ? RELATIONS[value] : "";
 }
 
 function getAdvanceText(value) {
@@ -51,7 +60,7 @@ Page({
           hasReminder: Boolean(remindTime),
           remindTimeText: remindTime ? formatDateTime(remindTime) : "",
           advanceText: getAdvanceText(item.remindAdvance),
-          targetText: remindTargets.map((value) => RELATIONS[value]).filter(Boolean).join("、"),
+          targetText: remindTargets.map(getRelationLabel).filter(Boolean).join("、"),
         },
         canEdit: canPerform(this.currentUser.role, "manageNotice"),
       });
