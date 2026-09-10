@@ -1,14 +1,48 @@
 const { callFunction, showError, uploadFile } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
-const { NOTICE_CATEGORIES } = require("../../utils/constants");
+const { NOTICE_CATEGORIES, RELATIONS } = require("../../utils/constants");
 const { formatDate } = require("../../utils/date");
 const { canPerform } = require("../../utils/permissions");
+const { requestReminderSubscription, shouldRequestSubscription } = require("../../utils/subscription");
+
+const VALID_ADVANCES = new Set([120, 1440]);
+const REMINDER_RELATIONS = Object.entries(RELATIONS).map(([value, label]) => ({ value, label }));
+
+function normalizeAdvance(value, fallback = 120) {
+  const values = Array.isArray(value) ? value : [value];
+  const advance = values.map(Number).find((item) => VALID_ADVANCES.has(item));
+  return [advance || fallback];
+}
+
+function normalizeTargets(value) {
+  const values = Array.isArray(value) ? value : [];
+  return [...new Set(values.filter((item) => typeof item === "string" && RELATIONS[item]))];
+}
+
+function createReminderRelations(targets) {
+  return REMINDER_RELATIONS.map((item) => ({ ...item, checked: targets.includes(item.value) }));
+}
+
+function getReminderTimestamp(value) {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function createUnavailableReminderStatus() {
+  return { enabled: false, templateId: "", estimatedAvailableCount: 0, pendingCount: 0, blockedReason: "STATUS_UNAVAILABLE" };
+}
+
+function reminderSettings(data) {
+  return data && data.settings ? data.settings : {};
+}
 
 Page({
   data: {
-    id: "", categories: NOTICE_CATEGORIES,
-    form: { semester: "2026下", title: "", source: "", category: "other", content: "", images: [], remindAdvance: [1440, 120], remindTargets: ["father", "mother"] },
-    reminderEnabled: false, remindDate: formatDate(new Date()), remindTime: "08:00", advanceDay: true, advanceHours: true, uploading: false, submitting: false,
+    id: "", categories: NOTICE_CATEGORIES, reminderRelations: createReminderRelations([]),
+    form: { semester: "2026下", title: "", source: "", category: "other", content: "", images: [], remindAdvance: [120], remindTargets: [] },
+    reminderEnabled: false, reminderStatus: createUnavailableReminderStatus(), needsSubscription: false,
+    remindDate: formatDate(new Date()), remindTime: "08:00", uploading: false, submitting: false,
   },
   async refreshPermission() {
     let session;
@@ -21,23 +55,75 @@ Page({
     return session;
   },
   async onLoad(options) {
-    const session = await this.refreshPermission(); if (!session) { if (this.currentUser) wx.navigateBack(); return; }
-    this.setData({ id: options.id || "", "form.semester": session.family.currentSemester });
+    const session = await this.refreshPermission();
+    if (!session) { if (this.currentUser) wx.navigateBack(); return; }
+    const [settingsData, reminderStatus] = await Promise.all([
+      callFunction("settings", "get").catch((error) => { showError(error, "家庭设置加载失败，请稍后重试"); return { settings: {} }; }),
+      callFunction("reminder", "getStatus").catch(() => createUnavailableReminderStatus()),
+    ]);
+    const settings = reminderSettings(settingsData);
+    const form = {
+      ...this.data.form,
+      semester: session.family.currentSemester,
+      remindAdvance: normalizeAdvance(settings.reminderDefaultAdvance),
+      remindTargets: normalizeTargets(settings.reminderTargets),
+    };
+    this.setData({ id: options.id || "", form, reminderRelations: createReminderRelations(form.remindTargets), reminderStatus, needsSubscription: this.getSubscriptionNeed({ form, reminderStatus }) });
     if (options.id) await this.load(options.id);
   },
   async load(id) {
     try {
       const item = await callFunction("notice", "get", { id });
-      const remind = item.remindTime ? new Date(item.remindTime) : new Date();
-      this.setData({ form: { ...item, images: item.images || [], remindAdvance: item.remindAdvance || [], remindTargets: item.remindTargets || [] }, reminderEnabled: Boolean(item.remindTime), remindDate: formatDate(remind), remindTime: `${String(remind.getHours()).padStart(2, "0")}:${String(remind.getMinutes()).padStart(2, "0")}`, advanceDay: (item.remindAdvance || []).includes(1440), advanceHours: (item.remindAdvance || []).includes(120) });
+      const remind = item.remindTime && !Number.isNaN(new Date(item.remindTime).getTime()) ? new Date(item.remindTime) : new Date();
+      const form = {
+        ...item,
+        images: Array.isArray(item.images) ? item.images : [],
+        remindAdvance: normalizeAdvance(item.remindAdvance),
+        remindTargets: normalizeTargets(item.remindTargets),
+      };
+      this.originalReminder = {
+        remindTime: item.remindTime || null,
+        remindAdvance: normalizeAdvance(item.remindAdvance),
+        remindTargets: normalizeTargets(item.remindTargets),
+        reminderState: item.reminderState,
+      };
+      this.setData({
+        form,
+        reminderRelations: createReminderRelations(form.remindTargets),
+        reminderEnabled: Boolean(item.remindTime),
+        remindDate: formatDate(remind),
+        remindTime: `${String(remind.getHours()).padStart(2, "0")}:${String(remind.getMinutes()).padStart(2, "0")}`,
+        needsSubscription: this.getSubscriptionNeed({ form, reminderEnabled: Boolean(item.remindTime) }),
+      });
     } catch (error) { showError(error); }
+  },
+  getSubscriptionNeed(overrides = {}) {
+    const form = overrides.form || this.data.form;
+    const reminderStatus = overrides.reminderStatus || this.data.reminderStatus;
+    const reminderEnabled = Object.prototype.hasOwnProperty.call(overrides, "reminderEnabled") ? overrides.reminderEnabled : this.data.reminderEnabled;
+    return shouldRequestSubscription({
+      reminderEnabled: Boolean(reminderEnabled && reminderStatus && reminderStatus.enabled),
+      currentRelation: this.currentUser && this.currentUser.relation,
+      remindTargets: form.remindTargets,
+      estimatedAvailableCount: reminderStatus && reminderStatus.estimatedAvailableCount,
+    });
   },
   onInput(event) { this.setData({ [`form.${event.currentTarget.dataset.field}`]: event.detail.value }); },
   selectCategory(event) { this.setData({ "form.category": event.currentTarget.dataset.value }); },
-  toggleReminder(event) { this.setData({ reminderEnabled: event.detail.value }); },
+  toggleReminder(event) {
+    const reminderEnabled = event.detail.value;
+    this.setData({ reminderEnabled, needsSubscription: this.getSubscriptionNeed({ reminderEnabled }) });
+  },
   onRemindDate(event) { this.setData({ remindDate: event.detail.value }); },
   onRemindTime(event) { this.setData({ remindTime: event.detail.value }); },
-  onAdvanceChange(event) { const values = event.detail.value.map(Number); this.setData({ "form.remindAdvance": values, advanceDay: values.includes(1440), advanceHours: values.includes(120) }); },
+  onAdvanceChange(event) {
+    const form = { ...this.data.form, remindAdvance: normalizeAdvance(event.detail.value) };
+    this.setData({ form, needsSubscription: this.getSubscriptionNeed({ form }) });
+  },
+  onTargetsChange(event) {
+    const form = { ...this.data.form, remindTargets: normalizeTargets(event.detail.value) };
+    this.setData({ form, reminderRelations: createReminderRelations(form.remindTargets), needsSubscription: this.getSubscriptionNeed({ form }) });
+  },
   async chooseImages() {
     if (!await this.refreshPermission()) { this.setData({ uploading: false }); return; }
     try {
@@ -53,15 +139,53 @@ Page({
     finally { this.setData({ uploading: false }); }
   },
   removeImage(event) { const images = [...this.data.form.images]; images.splice(event.currentTarget.dataset.index, 1); this.setData({ "form.images": images }); },
-  async save() {
+  hasMaterializedReminderChanged() {
+    if (!this.data.id || !this.originalReminder || !["materialized", "completed"].includes(this.originalReminder.reminderState)) return false;
+    const remindTime = this.data.reminderEnabled ? new Date(`${this.data.remindDate}T${this.data.remindTime}:00`).toISOString() : null;
+    return getReminderTimestamp(this.originalReminder.remindTime) !== getReminderTimestamp(remindTime)
+      || this.originalReminder.remindAdvance[0] !== this.data.form.remindAdvance[0]
+      || [...this.originalReminder.remindTargets].sort().join("|") !== [...this.data.form.remindTargets].sort().join("|");
+  },
+  save() {
     if (this.saveInProgress) return;
+    if (!this.data.form.title.trim()) { wx.showToast({ title: "请填写通知标题", icon: "none" }); return; }
+    if (this.data.reminderEnabled && this.data.form.remindTargets.length === 0) { wx.showToast({ title: "请至少选择一个提醒对象", icon: "none" }); return; }
     this.saveInProgress = true;
     this.setData({ submitting: true });
+    if (this.hasMaterializedReminderChanged()) {
+      wx.showModal({
+        title: "创建新的提醒版本",
+        content: "修改已完成调度的提醒时间、提前量、提醒对象或启停状态会创建新提醒版本，并可能再次通知。确认继续吗？",
+        success: (result) => {
+          if (result.confirm) this.persist();
+          else { this.saveInProgress = false; this.setData({ submitting: false }); }
+        },
+      });
+      return;
+    }
+    return this.persist();
+  },
+  async persist() {
+    const shouldSubscribe = this.getSubscriptionNeed();
+    const subscriptionRequest = shouldSubscribe ? requestReminderSubscription(this.data.reminderStatus.templateId) : null;
+    let subscriptionDenied = false;
+    let recordFailed = false;
     try {
       if (!await this.refreshPermission()) return;
-      if (!this.data.form.title.trim()) { wx.showToast({ title: "请填写通知标题", icon: "none" }); return; }
+      if (subscriptionRequest) {
+        try {
+          const subscription = await subscriptionRequest;
+          if (subscription.decision === "accept") {
+            try { await callFunction("reminder", "recordSubscription", subscription); }
+            catch (error) { console.error("Reminder subscription record failed", { message: error && error.message }); recordFailed = true; }
+          } else subscriptionDenied = true;
+        } catch (error) { subscriptionDenied = true; }
+      }
       const remindTime = this.data.reminderEnabled ? new Date(`${this.data.remindDate}T${this.data.remindTime}:00`).toISOString() : null;
-      await callFunction("notice", this.data.id ? "update" : "create", { ...this.data.form, id: this.data.id, remindTime }); wx.navigateBack();
+      await callFunction("notice", this.data.id ? "update" : "create", { ...this.data.form, id: this.data.id, remindTime });
+      if (recordFailed) wx.showToast({ title: "通知已保存，微信提醒授权记录失败，请到设置页重试", icon: "none" });
+      else if (subscriptionDenied) wx.showToast({ title: "通知已保存，微信提醒未授权", icon: "none" });
+      wx.navigateBack();
     }
     catch (error) { showError(error, "通知保存失败"); }
     finally { this.saveInProgress = false; this.setData({ submitting: false }); }

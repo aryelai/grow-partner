@@ -11,6 +11,7 @@
     "pages/family-members/family-members",
     "pages/homework-detail/homework-detail",
     "pages/homework-edit/homework-edit",
+    "pages/notice-detail/notice-detail",
     "pages/notice-edit/notice-edit",
     "pages/habit-detail/habit-detail",
     "pages/plan-edit/plan-edit",

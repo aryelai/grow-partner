@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const { createRequestId, getDecision } = require("../miniprogram/utils/subscription");
+const { createRequestId, getDecision, shouldRequestSubscription } = require("../miniprogram/utils/subscription");
 
 function createSettingsData() {
   return {
@@ -87,6 +87,66 @@ function loadSettingsPage(overrides = {}) {
   return { pageConfig, page };
 }
 
+function createNoticeSession() {
+  return {
+    user: { familyId: "family-id", relation: "father", role: "creator" },
+    family: { currentSemester: "2026下" },
+  };
+}
+
+function createNoticePage(sourceName, overrides = {}) {
+  const sourcePath = path.join(__dirname, `../miniprogram/pages/${sourceName}/${sourceName}.js`);
+  const source = fs.readFileSync(sourcePath, "utf8");
+  let pageConfig;
+  const wx = overrides.wx || { showToast() {}, showModal() {}, navigateBack() {}, navigateTo() {}, previewImage() {} };
+  const api = overrides.api || { callFunction: async () => ({}), showError() {}, uploadFile: async () => "cloud://image" };
+  const subscription = {
+    requestReminderSubscription: async () => ({ templateId: "template-id", decision: "reject", requestId: "subscription_request" }),
+    shouldRequestSubscription,
+    ...overrides.subscription,
+  };
+  const moduleValue = { exports: {} };
+  const context = vm.createContext({
+    Date,
+    Page(config) { pageConfig = config; },
+    wx,
+    module: moduleValue,
+    exports: moduleValue.exports,
+    require(request) {
+      if (request === "../../utils/api") return api;
+      if (request === "../../utils/session") return { requireFamily: overrides.requireFamily || (async () => createNoticeSession()) };
+      if (request === "../../utils/constants") return {
+        NOTICE_CATEGORIES: [{ value: "other", label: "其他" }],
+        RELATIONS: { father: "爸爸", mother: "妈妈", child: "孩子" },
+      };
+      if (request === "../../utils/date") return { formatDate: () => "2026-09-10", formatDateTime: (value) => `时间：${value}` };
+      if (request === "../../utils/permissions") return { canPerform: (role, action) => role !== "child" && action === "manageNotice" };
+      if (request === "../../utils/subscription") return subscription;
+      throw new Error(`测试未实现依赖：${request}`);
+    },
+  });
+  vm.runInContext(source, context, { filename: sourcePath });
+  const page = {
+    data: JSON.parse(JSON.stringify(pageConfig.data)),
+    setData(changes) {
+      Object.entries(changes).forEach(([key, value]) => {
+        const keys = key.split(".");
+        let target = this.data;
+        while (keys.length > 1) {
+          const currentKey = keys.shift();
+          target[currentKey] = target[currentKey] || {};
+          target = target[currentKey];
+        }
+        target[keys[0]] = value;
+      });
+    },
+  };
+  Object.entries(pageConfig).forEach(([key, value]) => {
+    if (typeof value === "function") page[key] = value;
+  });
+  return { pageConfig, page };
+}
+
 test("订阅结果只读取目标模板", () => {
   const templateId = "template-id";
 
@@ -98,6 +158,137 @@ test("订阅请求编号满足服务端格式", () => {
   const requestId = createRequestId(1788796800000, 0.123456789);
 
   assert.match(requestId, /^[A-Za-z0-9_-]{16,64}$/);
+});
+
+test("当前关系在提醒对象中且没有预计次数时需要订阅", () => {
+  assert.equal(shouldRequestSubscription({
+    reminderEnabled: true,
+    currentRelation: "father",
+    remindTargets: ["father", "mother"],
+    estimatedAvailableCount: 0,
+  }), true);
+});
+
+test("其他接收人的提醒不能由创建者代订阅", () => {
+  assert.equal(shouldRequestSubscription({
+    reminderEnabled: true,
+    currentRelation: "father",
+    remindTargets: ["mother"],
+    estimatedAvailableCount: 0,
+  }), false);
+});
+
+test("通知编辑页新建时采用家庭首个有效默认提前量和提醒对象", async () => {
+  const fixture = createNoticePage("notice-edit", {
+    api: {
+      callFunction(name, action) {
+        if (name === "settings" && action === "get") {
+          return Promise.resolve({ settings: { reminderDefaultAdvance: [1440, 120], reminderTargets: ["mother", "father", "mother"] } });
+        }
+        if (name === "reminder" && action === "getStatus") return Promise.resolve({ enabled: true, templateId: "template-id", estimatedAvailableCount: 0, pendingCount: 0, blockedReason: "" });
+        throw new Error(`不应调用：${name}.${action}`);
+      },
+      showError() {},
+      uploadFile: async () => "cloud://image",
+    },
+  });
+
+  await fixture.pageConfig.onLoad.call(fixture.page, {});
+
+  assert.deepEqual(JSON.parse(JSON.stringify(fixture.page.data.form.remindAdvance)), [1440]);
+  assert.deepEqual(JSON.parse(JSON.stringify(fixture.page.data.form.remindTargets)), ["mother", "father"]);
+  assert.equal(fixture.page.data.needsSubscription, false);
+});
+
+test("通知编辑页把单选提前量和提醒对象规范为单值去重数组", () => {
+  const fixture = createNoticePage("notice-edit");
+
+  fixture.pageConfig.onAdvanceChange.call(fixture.page, { detail: { value: "120" } });
+  fixture.pageConfig.onTargetsChange.call(fixture.page, { detail: { value: ["father", "father", "child"] } });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(fixture.page.data.form.remindAdvance)), [120]);
+  assert.deepEqual(JSON.parse(JSON.stringify(fixture.page.data.form.remindTargets)), ["father", "child"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(fixture.page.data.reminderRelations.filter((item) => item.checked).map((item) => item.value))), ["father", "child"]);
+});
+
+test("通知保存先发起当前用户的订阅授权，拒绝后仍保存并提示", async () => {
+  const events = [];
+  const toasts = [];
+  const fixture = createNoticePage("notice-edit", {
+    api: {
+      callFunction(name, action) {
+        events.push(`${name}.${action}`);
+        if (name === "notice" && action === "create") return Promise.resolve({ id: "notice-id" });
+        throw new Error(`不应调用：${name}.${action}`);
+      },
+      showError(error) { throw error; },
+      uploadFile: async () => "cloud://image",
+    },
+    subscription: {
+      requestReminderSubscription(templateId) {
+        events.push(`subscription.${templateId}`);
+        return Promise.resolve({ templateId, decision: "reject", requestId: "subscription_request" });
+      },
+    },
+    wx: {
+      showToast(options) { toasts.push(options); }, showModal() {}, navigateBack() { events.push("navigateBack"); }, navigateTo() {}, previewImage() {},
+    },
+  });
+  fixture.page.currentUser = createNoticeSession().user;
+  fixture.page.data.form = { ...fixture.page.data.form, title: "家长会", remindAdvance: [120], remindTargets: ["father"] };
+  fixture.page.data.reminderEnabled = true;
+  fixture.page.data.reminderStatus = { enabled: true, templateId: "template-id", estimatedAvailableCount: 0, pendingCount: 0, blockedReason: "" };
+
+  const saving = fixture.pageConfig.save.call(fixture.page);
+
+  assert.deepEqual(events, ["subscription.template-id"]);
+  await saving;
+  assert.equal(events.join(","), "subscription.template-id,notice.create,navigateBack");
+  assert.deepEqual(JSON.parse(JSON.stringify(toasts)), [{ title: "通知已保存，微信提醒未授权", icon: "none" }]);
+});
+
+test("通知详情拒绝非法标识且不请求云函数", async () => {
+  const calls = [];
+  const toasts = [];
+  const fixture = createNoticePage("notice-detail", {
+    api: { callFunction() { calls.push("notice.get"); return Promise.resolve({}); }, showError() {}, uploadFile: async () => "cloud://image" },
+    wx: { showToast(options) { toasts.push(options); }, showModal() {}, navigateBack() {}, navigateTo() {}, previewImage() {} },
+  });
+
+  await fixture.pageConfig.onLoad.call(fixture.page, { id: "../invalid" });
+
+  assert.deepEqual(calls, []);
+  assert.deepEqual(JSON.parse(JSON.stringify(toasts)), [{ title: "通知标识无效", icon: "none" }]);
+});
+
+test("通知详情显示公开字段并仅向有权限账号开放编辑", async () => {
+  const fixture = createNoticePage("notice-detail", {
+    api: {
+      callFunction(name, action) {
+        assert.equal(`${name}.${action}`, "notice.get");
+        return Promise.resolve({ _id: "notice-id", category: "other", remindTime: "2026-09-10T08:00:00.000Z", remindAdvance: [1440], remindTargets: ["father", "unknown"], images: ["cloud://image"] });
+      },
+      showError() {},
+      uploadFile: async () => "cloud://image",
+    },
+  });
+
+  await fixture.pageConfig.onLoad.call(fixture.page, { id: "notice-id" });
+
+  assert.equal(fixture.page.data.item.categoryName, "其他");
+  assert.equal(fixture.page.data.item.advanceText, "提前1天");
+  assert.equal(fixture.page.data.item.targetText, "爸爸");
+  assert.equal(fixture.page.data.canEdit, true);
+});
+
+test("通知列表卡片始终导航至只读详情", () => {
+  const fixture = createNoticePage("notice-list", {
+    wx: { showToast() {}, showModal() {}, navigateBack() {}, navigateTo(options) { fixture.url = options.url; }, previewImage() {} },
+  });
+
+  fixture.pageConfig.view.call(fixture.page, { currentTarget: { dataset: { id: "notice-id" } } });
+
+  assert.equal(fixture.url, "/pages/notice-detail/notice-detail?id=notice-id");
 });
 
 test("设置页并行读取设置和提醒状态", async () => {

@@ -11,9 +11,11 @@
     <view class="switch-row"><text>定时提醒</text><switch color="#4A90D9" checked="{{reminderEnabled}}" bindchange="toggleReminder" /></view>
     <view wx:if="{{reminderEnabled}}">
       <view class="deadline-row"><picker mode="date" value="{{remindDate}}" bindchange="onRemindDate"><view class="picker">{{remindDate}}</view></picker><picker mode="time" value="{{remindTime}}" bindchange="onRemindTime"><view class="picker">{{remindTime}}</view></picker></view>
-      <checkbox-group bindchange="onAdvanceChange"><label class="check"><checkbox value="1440" checked="{{advanceDay}}" />提前1天</label><label class="check"><checkbox value="120" checked="{{advanceHours}}" />提前2小时</label></checkbox-group>
+      <radio-group bindchange="onAdvanceChange"><label class="check"><radio value="1440" checked="{{form.remindAdvance[0] === 1440}}" />提前1天</label><label class="check"><radio value="120" checked="{{form.remindAdvance[0] === 120}}" />提前2小时</label></radio-group>
+      <view class="target-label">提醒对象</view>
+      <checkbox-group bindchange="onTargetsChange"><label class="check target-check" wx:for="{{reminderRelations}}" wx:key="value"><checkbox value="{{item.value}}" checked="{{item.checked}}" />{{item.label}}</label></checkbox-group>
     </view>
   </view>
-  <button class="primary-button save" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="save">保存通知</button>
+  <button class="primary-button save" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="save">{{needsSubscription ? '保存并订阅提醒' : '保存通知'}}</button>
   <button wx:if="{{id}}" class="danger-button remove-button" bindtap="remove">删除通知</button>
 </view>

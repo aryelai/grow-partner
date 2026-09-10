@@ -41,9 +41,6 @@ Page({
     if (!canPerform(this.currentUser && this.currentUser.role, "manageNotice")) { wx.showToast({ title: "孩子账号不能新增或编辑通知", icon: "none" }); return; }
     wx.navigateTo({ url: "/pages/notice-edit/notice-edit" });
   },
-  edit(event) {
-    if (!canPerform(this.currentUser && this.currentUser.role, "manageNotice")) { wx.showToast({ title: "孩子账号不能新增或编辑通知", icon: "none" }); return; }
-    wx.navigateTo({ url: `/pages/notice-edit/notice-edit?id=${event.currentTarget.dataset.id}` });
-  },
+  view(event) { wx.navigateTo({ url: `/pages/notice-detail/notice-detail?id=${event.currentTarget.dataset.id}` }); },
   onUnload() { clearTimeout(this.searchTimer); },
 });

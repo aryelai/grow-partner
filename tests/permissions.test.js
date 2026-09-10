@@ -146,7 +146,7 @@ test("作业删除请求只允许创建者和普通成员发起", () => {
 
 const listPages = [
   { path: "miniprogram/pages/homework-list/homework-list.js", handlers: ["createHomework"] },
-  { path: "miniprogram/pages/notice-list/notice-list.js", handlers: ["create", "edit"] },
+  { path: "miniprogram/pages/notice-list/notice-list.js", handlers: ["create"], readonlyHandler: "view" },
   { path: "miniprogram/pages/plan-list/plan-list.js", handlers: ["create", "edit"] },
 ];
 
@@ -160,6 +160,15 @@ test("孩子会话加载后列表页隐藏维护入口且事件不会跳转", as
     }
     assert.equal(fixture.navigateToCalls.length, 0, item.path);
   }
+});
+
+test("孩子账号可以从通知列表进入只读详情", async () => {
+  const fixture = loadPage("miniprogram/pages/notice-list/notice-list.js");
+
+  await fixture.page.onShow();
+  fixture.page.view({ currentTarget: { dataset: { id: "notice-1" } } });
+
+  assert.equal(fixture.navigateToCalls[0].url, "/pages/notice-detail/notice-detail?id=notice-1");
 });
 
 test("成人会话加载后列表页允许维护入口", async () => {
@@ -505,7 +514,7 @@ test("保存和删除使用最新会话拒绝降级账号", async () => {
 test("列表页会话刷新异常时清理维护状态并拒绝导航", async () => {
   for (const item of [
     { path: "miniprogram/pages/homework-list/homework-list.js", handlers: ["createHomework"] },
-    { path: "miniprogram/pages/notice-list/notice-list.js", handlers: ["create", "edit"] },
+    { path: "miniprogram/pages/notice-list/notice-list.js", handlers: ["create"] },
     { path: "miniprogram/pages/plan-list/plan-list.js", handlers: ["create", "edit"] },
   ]) {
     let sessionCalls = 0;

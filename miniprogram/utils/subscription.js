@@ -14,6 +14,16 @@ function getDecision(result, templateId) {
   return decision;
 }
 
+function shouldRequestSubscription({ reminderEnabled, currentRelation, remindTargets, estimatedAvailableCount }) {
+  return Boolean(
+    reminderEnabled
+    && typeof currentRelation === "string"
+    && Array.isArray(remindTargets)
+    && remindTargets.includes(currentRelation)
+    && Number(estimatedAvailableCount) <= 0,
+  );
+}
+
 async function requestReminderSubscription(templateId) {
   if (typeof templateId !== "string" || !templateId) throw new Error("Invalid subscription template ID");
   const requestId = createRequestId(Date.now(), Math.random());
@@ -22,4 +32,4 @@ async function requestReminderSubscription(templateId) {
   return { templateId, decision: getDecision(result, templateId), requestId };
 }
 
-module.exports = { createRequestId, getDecision, requestReminderSubscription };
+module.exports = { createRequestId, getDecision, shouldRequestSubscription, requestReminderSubscription };
