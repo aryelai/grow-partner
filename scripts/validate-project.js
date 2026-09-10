@@ -4,6 +4,11 @@ const vm = require("node:vm");
 
 const projectRoot = path.resolve(__dirname, "..");
 const errors = [];
+const expectedPageCount = 16;
+const expectedCloudFunctionCount = 9;
+const todoTemplateId = "5Iy1Jv7aswWNmrRMDXgrcj2BKeywdH6evDst6OomB2c";
+const mistypedTodoTemplateId = "5ly1Jv7aswWNmrRMDXgrcj2BKeywdH6evDst6OomB2c";
+const forbiddenCalendarTemplateId = "1fMjBkOzsEqXYVrQieX6ljtQ4lAKf8tIRn7GP2jDRew";
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -35,6 +40,9 @@ for (const file of [...files.filter((item) => item.endsWith(".json")), path.join
 }
 
 const appConfig = JSON.parse(fs.readFileSync(path.join(projectRoot, "miniprogram/app.json"), "utf8"));
+if (appConfig.pages.length !== expectedPageCount) errors.push(`页面数量应为${expectedPageCount}个`);
+if (!appConfig.pages.includes("pages/notice-detail/notice-detail")) errors.push("通知详情页未在 app.json 注册");
+if (new Set(appConfig.pages).size !== appConfig.pages.length) errors.push("app.json 存在重复页面配置");
 for (const pagePath of appConfig.pages) {
   for (const extension of ["js", "json", "wxml", "wxss"]) {
     const file = path.join(projectRoot, "miniprogram", `${pagePath}.${extension}`);
@@ -81,7 +89,9 @@ for (const file of files.filter((item) => item.endsWith(".wxss"))) {
 }
 
 const cloudRoot = path.join(projectRoot, "cloudfunctions");
-for (const entry of fs.readdirSync(cloudRoot, { withFileTypes: true }).filter((item) => item.isDirectory())) {
+const cloudFunctionEntries = fs.readdirSync(cloudRoot, { withFileTypes: true }).filter((item) => item.isDirectory());
+if (cloudFunctionEntries.length !== expectedCloudFunctionCount) errors.push(`云函数数量应为${expectedCloudFunctionCount}个`);
+for (const entry of cloudFunctionEntries) {
   const packageFile = path.join(cloudRoot, entry.name, "package.json");
   const indexFile = path.join(cloudRoot, entry.name, "index.js");
   if (!fs.existsSync(packageFile) || !fs.existsSync(indexFile)) {
@@ -94,13 +104,32 @@ for (const entry of fs.readdirSync(cloudRoot, { withFileTypes: true }).filter((i
   }
 }
 
-const sourceText = files.filter((item) => /\.(?:js|json|wxml)$/.test(item)).map((item) => fs.readFileSync(item, "utf8")).join("\n");
-if (/\bsk-[A-Za-z0-9_-]{16,}\b/.test(sourceText)) errors.push("检测到疑似硬编码 API Key");
-if (/apiKey\s*[:=]\s*["'][^"']{8,}["']/.test(sourceText)) errors.push("检测到疑似硬编码 aiApiKey");
+const reminderConfigPath = path.join(cloudRoot, "reminder/config.json");
+let reminderConfig = null;
+try {
+  reminderConfig = JSON.parse(fs.readFileSync(reminderConfigPath, "utf8"));
+} catch {
+  errors.push("提醒触发器配置无法读取");
+}
+const reminderTrigger = reminderConfig && Array.isArray(reminderConfig.triggers) && reminderConfig.triggers.length === 1
+  ? reminderConfig.triggers[0]
+  : null;
+if (!reminderTrigger || reminderTrigger.name !== "reminderTimer") errors.push("提醒定时触发器名称不正确");
+if (!reminderTrigger || reminderTrigger.type !== "timer") errors.push("提醒定时触发器类型不正确");
+if (!reminderTrigger || reminderTrigger.config !== "0 */30 * * * * *") errors.push("提醒定时触发器不是每30分钟执行一次");
+
+const runtimeFiles = files.filter((item) => !item.startsWith(`${path.join(projectRoot, "tests")}${path.sep}`));
+const runtimeSourceText = runtimeFiles.filter((item) => /\.(?:js|json|wxml)$/.test(item)).map((item) => fs.readFileSync(item, "utf8")).join("\n");
+if (!runtimeSourceText.includes(todoTemplateId)) errors.push("待办事项提醒模板ID缺失");
+if (runtimeSourceText.includes(mistypedTodoTemplateId)) errors.push("检测到大小写错误的待办事项提醒模板ID");
+if (runtimeSourceText.includes(forbiddenCalendarTemplateId)) errors.push("检测到本轮禁用的日程提醒模板ID");
+if (/\bsk-[A-Za-z0-9_-]{16,}\b/.test(runtimeSourceText)) errors.push("检测到疑似硬编码 API Key");
+if (/apiKey\s*[:=]\s*["'][^"']{8,}["']/.test(runtimeSourceText)) errors.push("检测到疑似硬编码 aiApiKey");
+if (/["']?(?:appSecret|app_secret|APP_SECRET)["']?\s*[:=]\s*["'][^"']{8,}["']/i.test(runtimeSourceText)) errors.push("检测到疑似硬编码 AppSecret");
 
 if (errors.length) {
   for (const error of errors) console.error(error);
   process.exitCode = 1;
 } else {
-  console.log(`项目静态校验通过：${files.length} 个文件，${appConfig.pages.length} 个页面，${fs.readdirSync(cloudRoot, { withFileTypes: true }).filter((item) => item.isDirectory()).length} 个云函数。`);
+  console.log(`项目静态校验通过：${files.length} 个文件，${appConfig.pages.length} 个页面，${cloudFunctionEntries.length} 个云函数。`);
 }
