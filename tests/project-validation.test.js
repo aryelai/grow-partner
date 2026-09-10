@@ -65,6 +65,15 @@ test("提醒云函数缺少订阅消息发送权限会使项目静态校验失�
   }, (result) => assertValidationFailure(result, /提醒云函数未声明订阅消息发送权限/));
 });
 
+test("提醒云函数声明额外 OpenAPI 权限会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const configPath = path.join(temporaryRoot, "cloudfunctions/reminder/config.json");
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    config.permissions.openapi.push("wxacode.get");
+    fs.writeFileSync(configPath, JSON.stringify(config));
+  }, (result) => assertValidationFailure(result, /提醒云函数 OpenAPI 权限必须限制为订阅消息发送/));
+});
+
 test("大小写错误的待办模板 ID 会使项目静态校验失败", () => {
   withProjectCopy((temporaryRoot) => {
     const corePath = path.join(temporaryRoot, "cloudfunctions/reminder/core.js");

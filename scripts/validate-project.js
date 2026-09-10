@@ -120,6 +120,8 @@ if (!reminderTrigger || reminderTrigger.config !== "0 */30 * * * * *") errors.pu
 const reminderOpenApiPermissions = reminderConfig && reminderConfig.permissions && reminderConfig.permissions.openapi;
 if (!Array.isArray(reminderOpenApiPermissions) || !reminderOpenApiPermissions.includes("subscribeMessage.send")) {
   errors.push("提醒云函数未声明订阅消息发送权限");
+} else if (reminderOpenApiPermissions.length !== 1 || reminderOpenApiPermissions[0] !== "subscribeMessage.send") {
+  errors.push("提醒云函数 OpenAPI 权限必须限制为订阅消息发送");
 }
 
 const runtimeFiles = files.filter((item) => !item.startsWith(`${path.join(projectRoot, "tests")}${path.sep}`));
