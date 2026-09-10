@@ -7,6 +7,7 @@ const { requestReminderSubscription, shouldRequestSubscription } = require("../.
 
 const VALID_ADVANCES = new Set([120, 1440]);
 const REMINDER_RELATIONS = Object.entries(RELATIONS).map(([value, label]) => ({ value, label }));
+const SENSITIVE_ERROR_VALUE_PATTERN = /((?:^|[{\s,?&;])(?:["'])?(?:access[_-]?token|refresh[_-]?token|token|api[_-]?key|client[_-]?secret|password|cookie|openid|secret|key)(?:["'])?\s*[:=]\s*)(?:"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s,;}&]+)/gi;
 
 function hasRelation(value) {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(RELATIONS, value);
@@ -41,14 +42,18 @@ function reminderSettings(data) {
   return data && data.settings ? data.settings : {};
 }
 
+function redactSensitiveValues(message) {
+  return message
+    .replace(SENSITIVE_ERROR_VALUE_PATTERN, "$1[REDACTED]")
+    .replace(/\bo[A-Za-z0-9_-]{20,}\b/g, "[REDACTED]");
+}
+
 function getErrorContext(error) {
-  const message = String((error && (error.message || error.errMsg)) || "")
+  const normalizedMessage = String((error && (error.message || error.errMsg)) || "")
     .replace(/[\u0000-\u001f\u007f]/g, " ")
     .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b(token|cookie|password|secret|key|openid)\b\s*([=:])\s*(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)/gi, "$1$2[REDACTED]")
-    .replace(/\bo[A-Za-z0-9_-]{20,}\b/g, "[REDACTED]")
-    .slice(0, 160);
+    .trim();
+  const message = redactSensitiveValues(normalizedMessage).slice(0, 160);
   const code = typeof (error && error.code) === "string" ? error.code.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) : "";
   return { message, code };
 }

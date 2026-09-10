@@ -443,14 +443,15 @@ test("接受授权后登记失败仍保存并显示指定提示", async () => {
   assert.deepEqual(JSON.parse(JSON.stringify(toasts)), [{ title: "通知已保存，微信提醒授权记录失败，请到设置页重试", icon: "none" }]);
 });
 
-test("确认新提醒版本后同步发起订阅授权", async () => {
+test("确认新提醒版本后同步发起订阅授权并在持久化完成后释放保存锁", async () => {
   const events = [];
   const modalCalls = [];
+  const update = createDeferred();
   const fixture = createNoticePage("notice-edit", {
     api: {
       callFunction(name, action) {
         events.push(`${name}.${action}`);
-        if (name === "notice" && action === "update") return Promise.resolve({ id: "notice-id" });
+        if (name === "notice" && action === "update") return update.promise;
         throw new Error(`不应调用：${name}.${action}`);
       },
       showError(error) { throw error; },
@@ -470,6 +471,10 @@ test("确认新提醒版本后同步发起订阅授权", async () => {
   assert.deepEqual(events, ["subscription.request"]);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(events.at(-1), "notice.update");
+  update.resolve({ id: "notice-id" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fixture.page.saveInProgress, false);
+  assert.equal(fixture.page.data.submitting, false);
 });
 
 test("通知详情将历史畸形提醒字段显示为未设置并隐藏无效时间", async () => {
@@ -845,7 +850,7 @@ test("订阅登记失败时保留云函数错误码上下文", async () => {
   assert.deepEqual(JSON.parse(JSON.stringify(logs[0][1])), { message: "订阅登记失败", errMsg: "", code: "RECORD_FAILED", errCode: "" });
 });
 
-test("编辑通知加载期间不显示删除确认或发起删除", async () => {
+test("编辑通知加载期间拒绝保存和删除副作用", async () => {
   const events = [];
   const modals = [];
   const notice = createDeferred();
@@ -856,17 +861,22 @@ test("编辑通知加载期间不显示删除确认或发起删除", async () =>
         if (name === "settings") return Promise.resolve({ settings: {} });
         if (name === "reminder") return Promise.resolve(createReminderStatus());
         if (name === "notice" && action === "get") return notice.promise;
-        if (name === "notice" && action === "remove") throw new Error("初始化期间不应删除通知");
+        if (name === "notice") throw new Error("初始化期间不应写入通知");
         throw new Error(`不应调用：${name}.${action}`);
       },
       showError(error) { throw error; },
       uploadFile: async () => "cloud://image",
     },
     wx: { showToast() {}, showModal(options) { modals.push(options); }, navigateBack() {}, navigateTo() {}, previewImage() {} },
+    subscription: { requestReminderSubscription() { events.push("subscription.request"); return Promise.resolve({ decision: "accept" }); } },
   });
 
   const loading = fixture.pageConfig.onLoad.call(fixture.page, { id: "notice-id" });
   await new Promise((resolve) => setImmediate(resolve));
+  fixture.page.data.form = { ...fixture.page.data.form, title: "家长会", remindAdvance: [120], remindTargets: ["father"] };
+  fixture.page.data.reminderEnabled = true;
+  fixture.page.data.reminderStatus = createReminderStatus();
+  fixture.pageConfig.save.call(fixture.page);
   await fixture.pageConfig.remove.call(fixture.page);
 
   assert.equal(fixture.page.data.initializing, true);
@@ -957,6 +967,39 @@ test("提醒状态错误日志不包含敏感凭据", async () => {
   assert.ok(logs[0][1].message.includes("状态失败"));
   assert.ok(logs[0][1].message.length <= 160);
   for (const value of secretValues) assert.equal(logs[0][1].message.includes(value), false, value);
+});
+
+test("提醒状态错误日志脱敏复合键和 JSON 查询日志格式", async () => {
+  const cases = [
+    { message: "提醒状态读取失败\n{\"token\":\"json-token-secret\"}", secrets: ["json-token-secret"] },
+    { message: "提醒状态读取失败 ?access_token=query-token-secret&action=getStatus", secrets: ["query-token-secret"] },
+    { message: "提醒状态读取失败 refreshToken:refresh-token-secret apiKey=api-key-secret clientSecret=client-secret-value", secrets: ["refresh-token-secret", "api-key-secret", "client-secret-value"] },
+    { message: "提醒状态读取失败 {\"password\":\"password-secret\",\"cookie\":\"cookie-secret\",\"openid\":\"openid-secret\"}", secrets: ["password-secret", "cookie-secret", "openid-secret"] },
+  ];
+
+  for (const item of cases) {
+    const logs = [];
+    const fixture = createNoticePage("notice-edit", {
+      api: {
+        callFunction(name) {
+          if (name === "settings") return Promise.resolve({ settings: {} });
+          return Promise.reject({ message: item.message, code: "STATUS_FAILED" });
+        },
+        showError() {},
+        uploadFile: async () => "cloud://image",
+      },
+      console: { error(...args) { logs.push(args); } },
+    });
+
+    await fixture.pageConfig.onLoad.call(fixture.page, {});
+
+    assert.equal(logs[0][0], "Reminder status request failed");
+    assert.ok(logs[0][1].message.includes("提醒状态读取失败"));
+    assert.equal(logs[0][1].message.includes("\n"), false);
+    assert.ok(logs[0][1].message.length <= 160);
+    assert.equal(logs[0][1].code, "STATUS_FAILED");
+    for (const secret of item.secrets) assert.equal(logs[0][1].message.includes(secret), false, secret);
+  }
 });
 
 test("通知详情将非日期提醒时间视为未设置", async () => {
