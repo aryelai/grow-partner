@@ -245,6 +245,17 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
       if (delivery.nextAttemptAt && asDate(delivery.nextAttemptAt) > currentTime) return null;
       const subscriptionId = createSubscriptionId(delivery.recipientOpenid, TODO_TEMPLATE_ID);
       const subscription = await readDoc(transaction, "message_subscriptions", subscriptionId);
+      if (subscription && subscription.blockedReason === "SYSTEM_BLOCKED") {
+        await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: {
+          status: "failed",
+          lastErrorCode: null,
+          lastErrorMessage: "SYSTEM_BLOCKED",
+          lockExpiresAt: null,
+          quotaFinalized: true,
+          updatedAt: currentTime,
+        } });
+        return { terminalStatus: "failed" };
+      }
       const availableCount = normalizeCount(subscription && subscription.estimatedAvailableCount, AVAILABLE_COUNT_LIMIT);
       if (availableCount <= 0) return null;
       const next = {
@@ -369,18 +380,10 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
     if (!VALID_STATES.has(miniprogramState)) {
       return { scannedNotices: 0, createdDeliveries: 0, processedDeliveries: 0, sent: 0, waiting: 0, failed: 0, expired: 0, blockedReason: "CONFIGURATION" };
     }
-    let notices;
-    try {
-      notices = await database.collection("notices").where({
-        reminderState: "scheduled",
-        scheduledAt: lteCondition(now()),
-      }).orderBy("scheduledAt", "asc").limit(NOTICE_SCAN_LIMIT).get();
-    } catch (error) {
-      if (/测试未实现集合|collection.*not found/i.test(String(error && error.message))) {
-        return { skipped: true, reason: "SCHEDULER_NOT_IMPLEMENTED" };
-      }
-      throw error;
-    }
+    const notices = await database.collection("notices").where({
+      reminderState: "scheduled",
+      scheduledAt: lteCondition(now()),
+    }).orderBy("scheduledAt", "asc").limit(NOTICE_SCAN_LIMIT).get();
     let createdDeliveries = 0;
     for (const notice of notices.data || []) createdDeliveries += await materializeNotice(notice);
     const deliveryResult = await database.collection("reminder_deliveries").where({
@@ -410,6 +413,7 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
         }
         if (claim.terminalStatus) {
           if (claim.terminalStatus === "expired") expired += 1;
+          else if (claim.terminalStatus === "failed") failed += 1;
           else if (claim.terminalStatus !== "canceled") waiting += 1;
           continue;
         }

@@ -29,12 +29,12 @@ async function requireUser(openid) {
   return user;
 }
 
-async function findNotice(id, familyId) {
+async function findNotice(id, familyId, database = db) {
   try {
-    const item = (await db.collection("notices").doc(id).get()).data;
+    const item = (await database.collection("notices").doc(id).get()).data;
     return item && item.familyId === familyId ? item : null;
   } catch (error) {
-    if (String(error.errMsg || error.message).includes("exist")) return null;
+    if (/document.*(?:does not exist|not found)/i.test(String(error.errMsg || error.message))) return null;
     throw error;
   }
 }
@@ -84,17 +84,22 @@ async function save(user, event, updating) {
   const payload = validatePayload(event);
   if (payload.error) return failure(payload.error);
   if (updating) {
-    const item = await findNotice(cleanText(event.id, 64), user.familyId);
-    if (!item) return failure("通知不存在或无权编辑");
+    let id;
     try {
-      Object.assign(payload.data, buildReminderFields(payload.data, item));
+      id = await db.runTransaction(async (transaction) => {
+        const item = await findNotice(cleanText(event.id, 64), user.familyId, transaction);
+        if (!item) return "";
+        const data = { ...payload.data };
+        Object.assign(data, buildReminderFields(data, item));
+        await transaction.collection("notices").doc(item._id).update({ data });
+        return item._id;
+      });
     } catch (error) {
       if (error.message === "INVALID_ADVANCE") return failure("每条通知只能选择一个提醒时间");
       if (error.message === "MISSING_TARGETS") return failure("请至少选择一个提醒对象");
       throw error;
     }
-    await db.collection("notices").doc(item._id).update({ data: payload.data });
-    return success({ id: item._id }, "通知已更新");
+    return id ? success({ id }, "通知已更新") : failure("通知不存在或无权编辑");
   }
   try {
     Object.assign(payload.data, buildReminderFields(payload.data));

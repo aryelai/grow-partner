@@ -5,7 +5,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { buildReminderFields } = require("../cloudfunctions/notice/reminder-policy");
 
-function loadNoticeFunction() {
+function loadNoticeFunction(options = {}) {
   const sourcePath = path.join(__dirname, "../cloudfunctions/notice/index.js");
   const source = fs.readFileSync(sourcePath, "utf8");
   const user = {
@@ -17,6 +17,8 @@ function loadNoticeFunction() {
     role: "creator",
   };
   let createdNotice = null;
+  let currentNotice = options.notice ? structuredClone(options.notice) : null;
+  let retryPending = Boolean(options.retryOnce);
   const queryResult = (data) => ({ limit() { return { async get() { return { data }; } }; } });
   const database = {
     collection(name) {
@@ -27,9 +29,53 @@ function loadNoticeFunction() {
             createdNotice = data;
             return { _id: "notice-id" };
           },
+          doc(id) {
+            return {
+              async get() {
+                const snapshot = structuredClone(currentNotice);
+                if (typeof options.onOutsideNoticeRead === "function") {
+                  currentNotice = structuredClone(options.onOutsideNoticeRead(currentNotice));
+                }
+                return { data: snapshot };
+              },
+              async update({ data }) {
+                currentNotice = { ...currentNotice, ...structuredClone(data), _id: id };
+              },
+            };
+          },
         };
       }
       throw new Error(`测试未实现集合：${name}`);
+    },
+    async runTransaction(callback) {
+      async function execute() {
+        let stagedNotice = structuredClone(currentNotice);
+        const transaction = {
+          collection(name) {
+            assert.equal(name, "notices");
+            return {
+              where() { throw new Error("事务不支持 where"); },
+              doc(id) {
+                return {
+                  async get() { return { data: structuredClone(stagedNotice) }; },
+                  async update({ data }) { stagedNotice = { ...stagedNotice, ...structuredClone(data), _id: id }; },
+                };
+              },
+            };
+          },
+        };
+        const result = await callback(transaction);
+        if (retryPending) {
+          retryPending = false;
+          if (typeof options.onTransactionConflict === "function") {
+            currentNotice = structuredClone(options.onTransactionConflict(currentNotice));
+          }
+          return execute();
+        }
+        currentNotice = stagedNotice;
+        return result;
+      }
+      return execute();
     },
   };
   const cloud = {
@@ -63,7 +109,11 @@ function loadNoticeFunction() {
     },
   });
   vm.runInContext(source, context, { filename: sourcePath });
-  return { main: moduleValue.exports.main, getCreatedNotice: () => createdNotice };
+  return {
+    main: moduleValue.exports.main,
+    getCreatedNotice: () => createdNotice,
+    getCurrentNotice: () => currentNotice,
+  };
 }
 
 test("提前两小时生成调度时间和首个提醒版本", async () => {
@@ -120,4 +170,96 @@ test("仅修改通知标题不创建新的提醒版本", () => {
   assert.equal(fields.reminderVersion, 2);
   assert.equal(fields.reminderState, "materialized");
   assert.equal(fields.isReminded, true);
+});
+
+test("并发提醒配置更新按事务内最新通知递增版本", async () => {
+  const initialNotice = {
+    _id: "notice-id",
+    familyId: "family-id",
+    semester: "2026下",
+    title: "原通知",
+    category: "activity",
+    content: "",
+    images: [],
+    source: "",
+    remindTime: new Date("2026-09-10T12:00:00.000Z"),
+    remindAdvance: [120],
+    remindTargets: ["father"],
+    scheduledAt: new Date("2026-09-10T10:00:00.000Z"),
+    reminderVersion: 1,
+    reminderState: "scheduled",
+    isReminded: false,
+  };
+  const concurrentNotice = {
+    ...initialNotice,
+    remindTime: new Date("2026-09-11T12:00:00.000Z"),
+    scheduledAt: new Date("2026-09-11T10:00:00.000Z"),
+    reminderVersion: 2,
+    reminderState: "materialized",
+  };
+  const fixture = loadNoticeFunction({
+    notice: initialNotice,
+    retryOnce: true,
+    onOutsideNoticeRead: () => concurrentNotice,
+    onTransactionConflict: () => concurrentNotice,
+  });
+
+  const result = await fixture.main({
+    action: "update",
+    id: "notice-id",
+    semester: "2026下",
+    title: "最终通知",
+    category: "activity",
+    remindTime: "2026-09-12T12:00:00.000Z",
+    remindAdvance: [120],
+    remindTargets: ["father"],
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(fixture.getCurrentNotice().reminderVersion, 3);
+  assert.equal(fixture.getCurrentNotice().reminderState, "scheduled");
+  assert.equal(fixture.getCurrentNotice().scheduledAt.toISOString(), "2026-09-12T10:00:00.000Z");
+});
+
+test("标题更新不会覆盖并发完成的提醒状态", async () => {
+  const initialNotice = {
+    _id: "notice-id",
+    familyId: "family-id",
+    semester: "2026下",
+    title: "原通知",
+    category: "activity",
+    content: "",
+    images: [],
+    source: "",
+    remindTime: new Date("2026-09-10T12:00:00.000Z"),
+    remindAdvance: [120],
+    remindTargets: ["father"],
+    scheduledAt: new Date("2026-09-10T10:00:00.000Z"),
+    reminderVersion: 2,
+    reminderState: "scheduled",
+    isReminded: false,
+  };
+  const completedNotice = { ...initialNotice, reminderState: "completed", isReminded: true };
+  const fixture = loadNoticeFunction({
+    notice: initialNotice,
+    retryOnce: true,
+    onOutsideNoticeRead: () => completedNotice,
+    onTransactionConflict: () => completedNotice,
+  });
+
+  const result = await fixture.main({
+    action: "update",
+    id: "notice-id",
+    semester: "2026下",
+    title: "只修改标题",
+    category: "activity",
+    remindTime: "2026-09-10T12:00:00.000Z",
+    remindAdvance: [120],
+    remindTargets: ["father"],
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(fixture.getCurrentNotice().reminderVersion, 2);
+  assert.equal(fixture.getCurrentNotice().reminderState, "completed");
+  assert.equal(fixture.getCurrentNotice().isReminded, true);
 });

@@ -389,6 +389,162 @@ function prepareReminderSave(fixture) {
   fixture.page.data.reminderStatus = { enabled: true, templateId: "template-id", estimatedAvailableCount: 0, pendingCount: 0, blockedReason: "" };
 }
 
+test("保存挂起期间冻结全部交互并提交点击时快照", async () => {
+  const permission = createDeferred();
+  const record = createDeferred();
+  const noticeSave = createDeferred();
+  const events = [];
+  const interactionPromises = [];
+  let noticePayload;
+  const fixture = createNoticePage("notice-edit", {
+    requireFamily() {
+      events.push("permission");
+      return permission.promise;
+    },
+    api: {
+      callFunction(name, action, data) {
+        events.push(`${name}.${action}`);
+        if (name === "reminder" && action === "recordSubscription") return record.promise;
+        if (name === "notice" && action === "create") {
+          noticePayload = structuredClone(data);
+          return noticeSave.promise;
+        }
+        throw new Error(`不应调用：${name}.${action}`);
+      },
+      showError(error) { throw error; },
+      uploadFile() { events.push("uploadFile"); return Promise.resolve("cloud://changed"); },
+    },
+    subscription: {
+      requestReminderSubscription(templateId) {
+        events.push(`subscription.${templateId}`);
+        return Promise.resolve({ templateId, decision: "accept", requestId: "subscription_request" });
+      },
+    },
+    wx: {
+      showToast() {},
+      showModal() { events.push("remove.modal"); },
+      navigateBack() { events.push("navigateBack"); },
+      navigateTo() {},
+      previewImage() {},
+      chooseMedia() { events.push("chooseMedia"); return Promise.resolve({ tempFiles: [] }); },
+    },
+  });
+  prepareReminderSave(fixture);
+  fixture.page.data.form = {
+    ...fixture.page.data.form,
+    source: "班主任",
+    content: "原始正文",
+    images: ["cloud://original"],
+  };
+  fixture.page.data.remindDate = "2026-09-10";
+  fixture.page.data.remindTime = "08:00";
+  const clickedForm = structuredClone(fixture.page.data.form);
+  const expectedState = () => ({
+    form: fixture.page.data.form,
+    reminderEnabled: fixture.page.data.reminderEnabled,
+    remindDate: fixture.page.data.remindDate,
+    remindTime: fixture.page.data.remindTime,
+    reminderRelations: fixture.page.data.reminderRelations,
+  });
+  const initialState = structuredClone(expectedState());
+  const exerciseInteractions = (label) => {
+    fixture.pageConfig.onInput.call(fixture.page, { currentTarget: { dataset: { field: "title" } }, detail: { value: `篡改-${label}` } });
+    fixture.pageConfig.selectCategory.call(fixture.page, { currentTarget: { dataset: { value: "changed" } } });
+    fixture.pageConfig.toggleReminder.call(fixture.page, { detail: { value: false } });
+    fixture.pageConfig.onRemindDate.call(fixture.page, { detail: { value: "2026-09-12" } });
+    fixture.pageConfig.onRemindTime.call(fixture.page, { detail: { value: "09:30" } });
+    fixture.pageConfig.onAdvanceChange.call(fixture.page, { detail: { value: "1440" } });
+    fixture.pageConfig.onTargetsChange.call(fixture.page, { detail: { value: ["mother"] } });
+    fixture.pageConfig.removeImage.call(fixture.page, { currentTarget: { dataset: { index: 0 } } });
+    interactionPromises.push(Promise.resolve(fixture.pageConfig.chooseImages.call(fixture.page)));
+    interactionPromises.push(Promise.resolve(fixture.pageConfig.remove.call(fixture.page)));
+    assert.deepEqual(structuredClone(expectedState()), initialState);
+  };
+
+  const saving = fixture.pageConfig.save.call(fixture.page);
+
+  assert.deepEqual(events, ["subscription.template-id", "permission"]);
+  assert.equal(fixture.page.data.submitting, true);
+  exerciseInteractions("权限阶段");
+
+  permission.resolve(createNoticeSession());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(events.includes("reminder.recordSubscription"));
+  exerciseInteractions("登记阶段");
+
+  record.resolve({});
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(events.includes("notice.create"));
+  exerciseInteractions("保存阶段");
+  assert.deepEqual(noticePayload, {
+    ...clickedForm,
+    id: "",
+    remindTime: new Date(2026, 8, 10, 8, 0).toISOString(),
+  });
+  assert.equal(events.includes("chooseMedia"), false);
+  assert.equal(events.includes("remove.modal"), false);
+
+  noticeSave.resolve({ id: "notice-id" });
+  await saving;
+  await Promise.all(interactionPromises);
+  assert.equal(fixture.page.data.submitting, false);
+  assert.equal(fixture.page.saveInProgress, false);
+});
+
+test("非法历史提醒时间加载后安全关闭且普通编辑不触发新提醒", async () => {
+  const events = [];
+  const modals = [];
+  let updatePayload;
+  const fixture = createNoticePage("notice-edit", {
+    api: {
+      callFunction(name, action, data) {
+        events.push(`${name}.${action}`);
+        if (name === "settings") return Promise.resolve({ settings: {} });
+        if (name === "reminder" && action === "getStatus") return Promise.resolve({ enabled: true, templateId: "template-id", estimatedAvailableCount: 0, pendingCount: 0, blockedReason: "" });
+        if (name === "notice" && action === "get") return Promise.resolve({
+          _id: "notice-id",
+          semester: "2026下",
+          title: "旧标题",
+          source: "班主任",
+          category: "other",
+          content: "正文",
+          images: [],
+          remindTime: "invalid-time",
+          remindAdvance: [120],
+          remindTargets: ["father"],
+          reminderState: "materialized",
+        });
+        if (name === "notice" && action === "update") { updatePayload = structuredClone(data); return Promise.resolve({ id: "notice-id" }); }
+        throw new Error(`不应调用：${name}.${action}`);
+      },
+      showError(error) { throw error; },
+      uploadFile: async () => "cloud://image",
+    },
+    subscription: {
+      requestReminderSubscription() {
+        events.push("subscription.request");
+        return Promise.resolve({ templateId: "template-id", decision: "accept", requestId: "subscription_request" });
+      },
+    },
+    wx: {
+      showToast() {}, showModal(options) { modals.push(options); }, navigateBack() {}, navigateTo() {}, previewImage() {},
+    },
+  });
+
+  await fixture.pageConfig.onLoad.call(fixture.page, { id: "notice-id" });
+
+  assert.equal(fixture.page.data.reminderEnabled, false);
+  assert.equal(fixture.page.data.needsSubscription, false);
+  fixture.pageConfig.onInput.call(fixture.page, { currentTarget: { dataset: { field: "title" } }, detail: { value: "新标题" } });
+  await fixture.pageConfig.save.call(fixture.page);
+
+  assert.equal(modals.length, 0);
+  assert.equal(events.includes("subscription.request"), false);
+  assert.equal(events.includes("reminder.recordSubscription"), false);
+  assert.equal(updatePayload.title, "新标题");
+  assert.equal(updatePayload.remindTime, null);
+});
+
 test("只有接受授权才登记订阅，拒绝限制过滤和关闭仍保存", async () => {
   for (const outcome of ["reject", "ban", "filter", "closed"]) {
     const events = [];

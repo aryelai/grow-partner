@@ -129,3 +129,5 @@ reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC
 - 部署时记录时间、九个函数状态、触发器状态和真机送达结果；部署后在云开发控制台观察调用次数、资源点、扫描数量、发送成功数、等待订阅数和错误码分布，不记录消息正文或完整 OpenID。
 - 30 分钟频率约每月触发 1440 次。若免费资源点异常增长，把 Cron 降为每小时一次 `0 0 * * * * *`，并重新核对触发器状态。
 - 出现模板字段错误、误发风险或无法解释的发送增长时，先停用 `reminderTimer`；保留 `message_subscriptions`、`reminder_deliveries` 和历史审计记录，不删除数据。
+- 微信返回 `43107` 后，服务会把对应订阅记录的 `blockedReason` 固定为 `SYSTEM_BLOCKED`，后续候选任务直接进入 `failed`，不再扣减预计次数或调用发送接口。客户端和 `recordSubscription` 均不得清除此状态。
+- 只有管理员确认订阅消息模板和发送能力已经恢复后，才能在云开发控制台显式清除对应 `message_subscriptions.blockedReason`，再观察后续新任务是否恢复发送；不得同时增加预计次数或把既有 `failed` 任务改回待发送。若再次出现 `43107`，立即停用 `reminderTimer` 并继续排查平台能力。

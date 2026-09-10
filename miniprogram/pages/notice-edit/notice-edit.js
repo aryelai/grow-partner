@@ -68,6 +68,15 @@ function getRemindTime(reminderEnabled, dateValue, timeValue) {
   return date.toISOString();
 }
 
+function createFormSnapshot(form) {
+  return Object.freeze({
+    ...form,
+    images: Object.freeze([...(Array.isArray(form.images) ? form.images : [])]),
+    remindAdvance: Object.freeze([...(Array.isArray(form.remindAdvance) ? form.remindAdvance : [])]),
+    remindTargets: Object.freeze([...(Array.isArray(form.remindTargets) ? form.remindTargets : [])]),
+  });
+}
+
 Page({
   data: {
     id: "", categories: NOTICE_CATEGORIES, reminderRelations: createReminderRelations([]),
@@ -111,7 +120,9 @@ Page({
   async load(id) {
     try {
       const item = await callFunction("notice", "get", { id });
-      const remind = item.remindTime && !Number.isNaN(new Date(item.remindTime).getTime()) ? new Date(item.remindTime) : new Date();
+      const reminderTimestamp = getReminderTimestamp(item.remindTime);
+      const reminderEnabled = reminderTimestamp !== null;
+      const remind = reminderEnabled ? new Date(reminderTimestamp) : new Date();
       const form = {
         ...item,
         images: Array.isArray(item.images) ? item.images : [],
@@ -119,7 +130,7 @@ Page({
         remindTargets: normalizeTargets(item.remindTargets),
       };
       this.originalReminder = {
-        remindTime: item.remindTime || null,
+        remindTime: reminderEnabled ? item.remindTime : null,
         remindAdvance: normalizeAdvance(item.remindAdvance),
         remindTargets: normalizeTargets(item.remindTargets),
         reminderState: item.reminderState,
@@ -127,15 +138,15 @@ Page({
       this.setData({
         form,
         reminderRelations: createReminderRelations(form.remindTargets),
-        reminderEnabled: Boolean(item.remindTime),
+        reminderEnabled,
         remindDate: formatDate(remind),
         remindTime: `${String(remind.getHours()).padStart(2, "0")}:${String(remind.getMinutes()).padStart(2, "0")}`,
-        needsSubscription: this.getSubscriptionNeed({ form, reminderEnabled: Boolean(item.remindTime) }),
+        needsSubscription: this.getSubscriptionNeed({ form, reminderEnabled }),
       });
       return true;
     } catch (error) { showError(error); return false; }
   },
-  isFormLocked() { return this.data.initializing || this.data.initializationFailed; },
+  isFormLocked() { return this.data.initializing || this.data.initializationFailed || this.data.submitting; },
   getSubscriptionNeed(overrides = {}) {
     const form = overrides.form || this.data.form;
     const reminderStatus = overrides.reminderStatus || this.data.reminderStatus;
@@ -183,40 +194,49 @@ Page({
     finally { this.setData({ uploading: false }); }
   },
   removeImage(event) { if (this.isFormLocked()) return; const images = [...this.data.form.images]; images.splice(event.currentTarget.dataset.index, 1); this.setData({ "form.images": images }); },
-  hasMaterializedReminderChanged(remindTime) {
-    if (!this.data.id || !this.originalReminder || !["materialized", "completed"].includes(this.originalReminder.reminderState)) return false;
+  hasMaterializedReminderChanged(remindTime, form, id) {
+    if (!id || !this.originalReminder || !["materialized", "completed"].includes(this.originalReminder.reminderState)) return false;
     return getReminderTimestamp(this.originalReminder.remindTime) !== getReminderTimestamp(remindTime)
-      || this.originalReminder.remindAdvance[0] !== this.data.form.remindAdvance[0]
-      || [...this.originalReminder.remindTargets].sort().join("|") !== [...this.data.form.remindTargets].sort().join("|");
+      || this.originalReminder.remindAdvance[0] !== form.remindAdvance[0]
+      || [...this.originalReminder.remindTargets].sort().join("|") !== [...form.remindTargets].sort().join("|");
   },
   save() {
     if (this.saveInProgress || this.isFormLocked()) return;
-    if (!this.data.form.title.trim()) { wx.showToast({ title: "请填写通知标题", icon: "none" }); return; }
-    if (this.data.reminderEnabled && this.data.form.remindTargets.length === 0) { wx.showToast({ title: "请至少选择一个提醒对象", icon: "none" }); return; }
-    const remindTime = getRemindTime(this.data.reminderEnabled, this.data.remindDate, this.data.remindTime);
+    const form = createFormSnapshot(this.data.form);
+    const reminderEnabled = this.data.reminderEnabled;
+    const reminderStatus = Object.freeze({ ...this.data.reminderStatus });
+    if (!form.title.trim()) { wx.showToast({ title: "请填写通知标题", icon: "none" }); return; }
+    if (reminderEnabled && form.remindTargets.length === 0) { wx.showToast({ title: "请至少选择一个提醒对象", icon: "none" }); return; }
+    const remindTime = getRemindTime(reminderEnabled, this.data.remindDate, this.data.remindTime);
     if (remindTime === undefined) { wx.showToast({ title: "提醒时间格式不正确", icon: "none" }); return; }
+    const snapshot = Object.freeze({
+      id: this.data.id,
+      form,
+      remindTime,
+      reminderStatus,
+      shouldSubscribe: this.getSubscriptionNeed({ form, reminderStatus, reminderEnabled }),
+    });
     this.saveInProgress = true;
     this.setData({ submitting: true });
     try {
-      if (this.hasMaterializedReminderChanged(remindTime)) {
+      if (this.hasMaterializedReminderChanged(remindTime, form, snapshot.id)) {
         wx.showModal({
           title: "创建新的提醒版本",
           content: "修改已完成调度的提醒时间、提前量、提醒对象或启停状态会创建新提醒版本，并可能再次通知。确认继续吗？",
           success: (result) => {
-            if (result.confirm) this.persist(remindTime);
+            if (result.confirm) this.persist(snapshot);
             else this.releaseSaveLock();
           },
           fail: () => this.releaseSaveLock(),
         });
         return;
       }
-      return this.persist(remindTime);
+      return this.persist(snapshot);
     } catch (error) { this.releaseSaveLock(); showError(error, "通知保存失败"); }
   },
   releaseSaveLock() { this.saveInProgress = false; this.setData({ submitting: false }); },
-  async persist(remindTime) {
-    const shouldSubscribe = this.getSubscriptionNeed();
-    const subscriptionRequest = shouldSubscribe ? requestReminderSubscription(this.data.reminderStatus.templateId) : null;
+  async persist(snapshot) {
+    const subscriptionRequest = snapshot.shouldSubscribe ? requestReminderSubscription(snapshot.reminderStatus.templateId) : null;
     let subscriptionDenied = false;
     let recordFailed = false;
     try {
@@ -230,7 +250,7 @@ Page({
           } else subscriptionDenied = true;
         } catch (error) { console.error("Reminder subscription request failed", getErrorContext(error)); subscriptionDenied = true; }
       }
-      await callFunction("notice", this.data.id ? "update" : "create", { ...this.data.form, id: this.data.id, remindTime });
+      await callFunction("notice", snapshot.id ? "update" : "create", { ...snapshot.form, id: snapshot.id, remindTime: snapshot.remindTime });
       if (recordFailed) wx.showToast({ title: "通知已保存，微信提醒授权记录失败，请到设置页重试", icon: "none" });
       else if (subscriptionDenied) wx.showToast({ title: "通知已保存，微信提醒未授权", icon: "none" });
       wx.navigateBack();
