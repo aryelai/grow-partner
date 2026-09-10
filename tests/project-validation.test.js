@@ -74,6 +74,20 @@ test("提醒云函数声明额外 OpenAPI 权限会使项目静态校验失败",
   }, (result) => assertValidationFailure(result, /提醒云函数 OpenAPI 权限必须限制为订阅消息发送/));
 });
 
+for (const [indexDescription, expectedError] of [
+  ["users:                  familyId ASC, role ASC", /家庭成员物化查询索引缺失/],
+  ["users:                  familyId ASC, openid ASC", /提醒接收人复核查询索引缺失/],
+  ["reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC", /待提醒状态查询索引缺失/],
+]) {
+  test(`部署文档缺少 ${indexDescription.trim()} 会使项目静态校验失败`, () => {
+    withProjectCopy((temporaryRoot) => {
+      const guidePath = path.join(temporaryRoot, "cloudfunctions/README.md");
+      const source = fs.readFileSync(guidePath, "utf8");
+      fs.writeFileSync(guidePath, source.replace(indexDescription, ""));
+    }, (result) => assertValidationFailure(result, expectedError));
+  });
+}
+
 test("大小写错误的待办模板 ID 会使项目静态校验失败", () => {
   withProjectCopy((temporaryRoot) => {
     const corePath = path.join(temporaryRoot, "cloudfunctions/reminder/core.js");

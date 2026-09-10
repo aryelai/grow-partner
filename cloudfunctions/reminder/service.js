@@ -88,13 +88,14 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
         deadlineAt: gtCondition(now()),
       }).count(),
     ]);
-    const enabled = VALID_STATES.has(miniprogramState);
+    const configurationEnabled = VALID_STATES.has(miniprogramState);
+    const systemBlocked = subscription && subscription.blockedReason === "SYSTEM_BLOCKED";
     return {
-      enabled,
+      enabled: configurationEnabled && !systemBlocked,
       templateId: TODO_TEMPLATE_ID,
       estimatedAvailableCount: normalizeCount(subscription && subscription.estimatedAvailableCount, AVAILABLE_COUNT_LIMIT),
       pendingCount: Number.isFinite(pending && pending.total) ? pending.total : 0,
-      blockedReason: !enabled ? "CONFIGURATION" : (subscription && subscription.blockedReason === "SYSTEM_BLOCKED" ? "SYSTEM_BLOCKED" : ""),
+      blockedReason: !configurationEnabled ? "CONFIGURATION" : (systemBlocked ? "SYSTEM_BLOCKED" : ""),
     };
   }
 
@@ -155,7 +156,6 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
         if (await readDoc(transaction, "reminder_deliveries", deliveryId)) return 0;
         const timestamp = now();
         await transaction.collection("reminder_deliveries").doc(deliveryId).set({ data: {
-          _id: deliveryId,
           deliveryId,
           noticeId,
           familyId: currentNotice.familyId,

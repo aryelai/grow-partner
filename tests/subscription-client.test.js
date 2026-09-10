@@ -421,11 +421,13 @@ test("只有接受授权才登记订阅，拒绝限制过滤和关闭仍保存",
 test("接受授权后登记失败仍保存并显示指定提示", async () => {
   const events = [];
   const toasts = [];
+  const logs = [];
+  const secret = "record-token-secret";
   const fixture = createNoticePage("notice-edit", {
     api: {
       callFunction(name, action) {
         events.push(`${name}.${action}`);
-        if (name === "reminder" && action === "recordSubscription") return Promise.reject(new Error("登记失败"));
+        if (name === "reminder" && action === "recordSubscription") return Promise.reject(new Error(`登记失败 token=${secret}`));
         if (name === "notice" && action === "create") return Promise.resolve({ id: "notice-id" });
         throw new Error(`不应调用：${name}.${action}`);
       },
@@ -434,6 +436,7 @@ test("接受授权后登记失败仍保存并显示指定提示", async () => {
     },
     subscription: { requestReminderSubscription: async () => ({ templateId: "template-id", decision: "accept", requestId: "subscription-request" }) },
     wx: { showToast(options) { toasts.push(options); }, showModal() {}, navigateBack() {}, navigateTo() {}, previewImage() {} },
+    console: { error(...args) { logs.push(args); } },
   });
   prepareReminderSave(fixture);
 
@@ -441,6 +444,8 @@ test("接受授权后登记失败仍保存并显示指定提示", async () => {
 
   assert.equal(events.join(","), "reminder.recordSubscription,notice.create");
   assert.deepEqual(JSON.parse(JSON.stringify(toasts)), [{ title: "通知已保存，微信提醒授权记录失败，请到设置页重试", icon: "none" }]);
+  assert.equal(logs[0][0], "Reminder subscription record failed");
+  assert.equal(JSON.stringify(logs).includes(secret), false);
 });
 
 test("确认新提醒版本后同步发起订阅授权并在持久化完成后释放保存锁", async () => {
@@ -804,6 +809,45 @@ test("配置未启用时显示可理解的提醒功能状态", async () => {
 
   assert.equal(fixture.page.data.reminderStatusText, "提醒功能未启用");
   assert.equal(fixture.page.data.reminderStatusDetail, "提醒服务尚未配置，暂不能增加提醒次数");
+});
+
+test("系统阻断时设置页展示阻断原因并禁止增加提醒次数", async () => {
+  const fixture = loadSettingsPage({
+    api: {
+      callFunction(name) {
+        return Promise.resolve(name === "settings"
+          ? createSettingsData()
+          : { ...createReminderStatus(), enabled: false, blockedReason: "SYSTEM_BLOCKED" });
+      },
+      showError() {},
+    },
+  });
+
+  await fixture.pageConfig.load.call(fixture.page);
+
+  assert.equal(fixture.page.data.reminderStatusText, "提醒功能已阻断");
+  assert.equal(fixture.page.data.reminderStatusDetail, "微信订阅消息能力或模板已停用，请联系管理员处理");
+  assert.equal(fixture.page.data.reminderStatus.enabled, false);
+});
+
+test("设置页提醒状态错误日志会脱敏凭据", async () => {
+  const logs = [];
+  const secret = "settings-token-secret";
+  const fixture = loadSettingsPage({
+    api: {
+      callFunction(name) {
+        if (name === "settings") return Promise.resolve(createSettingsData());
+        return Promise.reject(new Error(`提醒状态读取失败 token=${secret}`));
+      },
+      showError() {},
+    },
+    console: { error(...args) { logs.push(args); } },
+  });
+
+  await fixture.pageConfig.load.call(fixture.page);
+
+  assert.equal(logs[0][0], "Reminder status request failed");
+  assert.equal(JSON.stringify(logs).includes(secret), false);
 });
 
 test("微信授权失败时保留原生错误上下文并显示错误信息", async () => {

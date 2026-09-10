@@ -6,8 +6,10 @@ const { formatInviteCode } = require("../../utils/invite-code");
 const { requestReminderSubscription } = require("../../utils/subscription");
 
 const providers = [{ value: "deepseek", label: "DeepSeek" }, { value: "openai", label: "OpenAI" }, { value: "claude", label: "Claude" }, { value: "custom", label: "自定义" }];
+const SENSITIVE_ERROR_VALUE_PATTERN = /((?:^|[{\s,?&;])(?:["'])?(?:access[_-]?token|refresh[_-]?token|token|api[_-]?key|client[_-]?secret|password|cookie|openid|secret|key)(?:["'])?\s*[:=]\s*)(?:"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s,;}&]+)/gi;
 
 function getReminderStatusPresentation(reminderStatus) {
+  if (reminderStatus && reminderStatus.blockedReason === "SYSTEM_BLOCKED") return { text: "提醒功能已阻断", detail: "微信订阅消息能力或模板已停用，请联系管理员处理" };
   if (reminderStatus && reminderStatus.enabled) return { text: "提醒功能已启用", detail: "可增加提醒次数以接收待发送提醒" };
   if (reminderStatus && reminderStatus.blockedReason === "CONFIGURATION") return { text: "提醒功能未启用", detail: "提醒服务尚未配置，暂不能增加提醒次数" };
   if (reminderStatus && reminderStatus.blockedReason === "STATUS_UNAVAILABLE") return { text: "提醒状态暂不可用", detail: "暂时无法读取提醒状态，请重新查询后再授权" };
@@ -19,7 +21,14 @@ function createUnavailableReminderStatus() {
 }
 
 function cleanErrorText(value) {
-  return typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) : "";
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(SENSITIVE_ERROR_VALUE_PATTERN, "$1[REDACTED]")
+    .replace(/\bo[A-Za-z0-9_-]{20,}\b/g, "[REDACTED]")
+    .trim()
+    .slice(0, 160);
 }
 
 function cleanErrorCode(value) {

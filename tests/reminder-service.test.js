@@ -465,6 +465,9 @@ function createSchedulerFixture(options = {}) {
           },
           async set({ data }) {
             assert.equal(inTransaction, true, "调度写入必须在事务中完成");
+            if (options.rejectReservedIdWrite && Object.prototype.hasOwnProperty.call(data, "_id")) {
+              throw new Error("CloudBase set 不能更新 _id 字段");
+            }
             map.set(id, structuredClone(data));
           },
           async update({ data }) {
@@ -561,6 +564,18 @@ test("重复调度只物化一条接收人任务", async () => {
   assert.equal(second.createdDeliveries, 0);
   assert.equal(fixture.deliveries.size, 1);
   assert.equal(fixture.sendCalls.length, 0);
+});
+
+test("物化发送记录时不写入 CloudBase 保留的 _id 字段", async () => {
+  const fixture = createSchedulerFixture({
+    subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 0 }],
+    rejectReservedIdWrite: true,
+  });
+
+  const result = await fixture.service.run();
+
+  assert.equal(result.createdDeliveries, 1);
+  assert.equal(fixture.deliveries.size, 1);
 });
 
 test("物化事务使用当前通知接收人而非扫描快照", async () => {
@@ -972,7 +987,9 @@ test("旧版本发送完成不会覆盖新版本通知汇总", async () => {
 test("系统阻断状态持久化并可被新服务实例读取", async () => {
   const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 1 }], responses: [{ errCode: 43107 }] });
   await fixture.service.run();
-  assert.equal((await fixture.newService().getStatus(testUser)).blockedReason, "SYSTEM_BLOCKED");
+  const status = await fixture.newService().getStatus(testUser);
+  assert.equal(status.enabled, false);
+  assert.equal(status.blockedReason, "SYSTEM_BLOCKED");
 });
 
 test("已过期任务不调用微信", async () => {

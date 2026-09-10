@@ -47,6 +47,8 @@ AI Key 不在基础版中保存。`settings` 只保存供应商、Base URL、模
 
 ```text
 users:                  openid ASC（唯一业务约束）
+users:                  familyId ASC, role ASC
+users:                  familyId ASC, openid ASC
 families:               inviteCode ASC（唯一业务约束）
 family_join_requests:   familyId ASC, status ASC, createdAt ASC
 family_join_requests:   applicantOpenid ASC, status ASC
@@ -63,6 +65,7 @@ settings:               familyId ASC
 subjects:               familyId ASC, educationStage ASC, grade ASC
 reminder_deliveries:    status ASC, nextAttemptAt ASC
 reminder_deliveries:    noticeId ASC, reminderVersion ASC
+reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC
 ```
 
 云数据库未自动保证业务唯一性时，需要通过控制台能力或后续服务端幂等键强化 `users.openid`、`families.inviteCode`、`habit_checkins(habitId,date)` 和单家庭 `settings` 的唯一约束。当前代码已做邀请码碰撞检查与重复打卡不重复计分，但高并发下仍应以数据库唯一约束作为最终防线。
@@ -101,9 +104,12 @@ reminder_deliveries:    noticeId ASC, reminderVersion ASC
 2. 创建并等待以下复合索引变为可用：
 
    ```text
+   users:                 familyId ASC, role ASC
+   users:                 familyId ASC, openid ASC
    notices:               reminderState ASC, scheduledAt ASC
    reminder_deliveries:  status ASC, nextAttemptAt ASC
    reminder_deliveries:  noticeId ASC, reminderVersion ASC
+   reminder_deliveries:  recipientOpenid ASC, status ASC, deadlineAt ASC
    ```
 
 3. 为 `reminder` 云函数配置 `MINIPROGRAM_STATE=developer`。该值只允许 `developer`、`trial`、`formal`；缺失或非法时服务端会禁用发送。不得配置或上传 AppSecret。

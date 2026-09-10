@@ -226,9 +226,9 @@ Page({
           const subscription = await subscriptionRequest;
           if (subscription.decision === "accept") {
             try { await callFunction("reminder", "recordSubscription", subscription); }
-            catch (error) { console.error("Reminder subscription record failed", { message: error && error.message }); recordFailed = true; }
+            catch (error) { console.error("Reminder subscription record failed", getErrorContext(error)); recordFailed = true; }
           } else subscriptionDenied = true;
-        } catch (error) { subscriptionDenied = true; }
+        } catch (error) { console.error("Reminder subscription request failed", getErrorContext(error)); subscriptionDenied = true; }
       }
       await callFunction("notice", this.data.id ? "update" : "create", { ...this.data.form, id: this.data.id, remindTime });
       if (recordFailed) wx.showToast({ title: "通知已保存，微信提醒授权记录失败，请到设置页重试", icon: "none" });

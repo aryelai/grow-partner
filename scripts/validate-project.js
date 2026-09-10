@@ -123,6 +123,14 @@ if (!Array.isArray(reminderOpenApiPermissions) || !reminderOpenApiPermissions.in
 } else if (reminderOpenApiPermissions.length !== 1 || reminderOpenApiPermissions[0] !== "subscribeMessage.send") {
   errors.push("提醒云函数 OpenAPI 权限必须限制为订阅消息发送");
 }
+const deploymentGuideText = fs.readFileSync(path.join(cloudRoot, "README.md"), "utf8");
+for (const [indexDescription, errorMessage] of [
+  ["users:                  familyId ASC, role ASC", "家庭成员物化查询索引缺失"],
+  ["users:                  familyId ASC, openid ASC", "提醒接收人复核查询索引缺失"],
+  ["reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC", "待提醒状态查询索引缺失"],
+]) {
+  if (!deploymentGuideText.includes(indexDescription)) errors.push(errorMessage);
+}
 
 const runtimeFiles = files.filter((item) => !item.startsWith(`${path.join(projectRoot, "tests")}${path.sep}`));
 const runtimeSourceText = runtimeFiles.filter((item) => /\.(?:js|json|wxml)$/.test(item)).map((item) => fs.readFileSync(item, "utf8")).join("\n");
