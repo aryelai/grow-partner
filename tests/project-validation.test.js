@@ -56,6 +56,15 @@ test("提醒触发器类型错误会使项目静态校验失败", () => {
   }, (result) => assertValidationFailure(result, /提醒定时触发器类型不正确/));
 });
 
+test("提醒云函数缺少订阅消息发送权限会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const configPath = path.join(temporaryRoot, "cloudfunctions/reminder/config.json");
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    delete config.permissions;
+    fs.writeFileSync(configPath, JSON.stringify(config));
+  }, (result) => assertValidationFailure(result, /提醒云函数未声明订阅消息发送权限/));
+});
+
 test("大小写错误的待办模板 ID 会使项目静态校验失败", () => {
   withProjectCopy((temporaryRoot) => {
     const corePath = path.join(temporaryRoot, "cloudfunctions/reminder/core.js");
@@ -76,9 +85,17 @@ test("运行时配置包含 AppSecret 会使项目静态校验失败", () => {
   withProjectCopy((temporaryRoot) => {
     const configPath = path.join(temporaryRoot, "cloudfunctions/reminder/config.json");
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    config.appSecret = "replace-with-real-secret";
+    config[["app", "Secret"].join("")] = "fixture-secret-value";
     fs.writeFileSync(configPath, JSON.stringify(config));
   }, (result) => assertValidationFailure(result, /检测到疑似硬编码 AppSecret/));
+});
+
+test("测试源码包含疑似 API Key 会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const fixturePath = path.join(temporaryRoot, "tests/fixture-secret.test.js");
+    const fakeKey = ["sk", "fixturevalue1234567890"].join("-");
+    fs.writeFileSync(fixturePath, `const leakedCredential = "${fakeKey}";\n`);
+  }, (result) => assertValidationFailure(result, /检测到疑似硬编码 API Key/));
 });
 
 test("页面数量漂移会使项目静态校验失败", () => {

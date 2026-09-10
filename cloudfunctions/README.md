@@ -107,7 +107,7 @@ reminder_deliveries:    noticeId ASC, reminderVersion ASC
    ```
 
 3. 为 `reminder` 云函数配置 `MINIPROGRAM_STATE=developer`。该值只允许 `developer`、`trial`、`formal`；缺失或非法时服务端会禁用发送。不得配置或上传 AppSecret。
-4. 上传并部署全部九个云函数。订阅提醒变更至少涉及 `settings`、`notice` 和 `reminder`，均选择“云端安装依赖（不上传 node_modules）”，部署后核对状态为 `Active`。
+4. 上传并部署全部九个云函数。订阅提醒变更至少涉及 `settings`、`notice` 和 `reminder`；部署 `reminder` 前核对其 `config.json` 已在 `permissions.openapi` 中声明最小权限 `subscribeMessage.send`。均选择“云端安装依赖（不上传 node_modules）”，部署后核对状态为 `Active`。
 5. 核对 `reminderTimer` 已安装，类型为 `timer`，Cron 精确为 `0 */30 * * * * *`，即每 30 分钟一次；同时确认控制台按北京时间解释调度窗口。
 
 ## 订阅提醒真机验收（尚未执行）

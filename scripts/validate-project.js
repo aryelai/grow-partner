@@ -117,15 +117,20 @@ const reminderTrigger = reminderConfig && Array.isArray(reminderConfig.triggers)
 if (!reminderTrigger || reminderTrigger.name !== "reminderTimer") errors.push("提醒定时触发器名称不正确");
 if (!reminderTrigger || reminderTrigger.type !== "timer") errors.push("提醒定时触发器类型不正确");
 if (!reminderTrigger || reminderTrigger.config !== "0 */30 * * * * *") errors.push("提醒定时触发器不是每30分钟执行一次");
+const reminderOpenApiPermissions = reminderConfig && reminderConfig.permissions && reminderConfig.permissions.openapi;
+if (!Array.isArray(reminderOpenApiPermissions) || !reminderOpenApiPermissions.includes("subscribeMessage.send")) {
+  errors.push("提醒云函数未声明订阅消息发送权限");
+}
 
 const runtimeFiles = files.filter((item) => !item.startsWith(`${path.join(projectRoot, "tests")}${path.sep}`));
 const runtimeSourceText = runtimeFiles.filter((item) => /\.(?:js|json|wxml)$/.test(item)).map((item) => fs.readFileSync(item, "utf8")).join("\n");
+const sourceText = files.filter((item) => /\.(?:js|json|wxml)$/.test(item)).map((item) => fs.readFileSync(item, "utf8")).join("\n");
 if (!runtimeSourceText.includes(todoTemplateId)) errors.push("待办事项提醒模板ID缺失");
 if (runtimeSourceText.includes(mistypedTodoTemplateId)) errors.push("检测到大小写错误的待办事项提醒模板ID");
 if (runtimeSourceText.includes(forbiddenCalendarTemplateId)) errors.push("检测到本轮禁用的日程提醒模板ID");
-if (/\bsk-[A-Za-z0-9_-]{16,}\b/.test(runtimeSourceText)) errors.push("检测到疑似硬编码 API Key");
-if (/apiKey\s*[:=]\s*["'][^"']{8,}["']/.test(runtimeSourceText)) errors.push("检测到疑似硬编码 aiApiKey");
-if (/["']?(?:appSecret|app_secret|APP_SECRET)["']?\s*[:=]\s*["'][^"']{8,}["']/i.test(runtimeSourceText)) errors.push("检测到疑似硬编码 AppSecret");
+if (/\bsk-[A-Za-z0-9_-]{16,}\b/.test(sourceText)) errors.push("检测到疑似硬编码 API Key");
+if (/apiKey\s*[:=]\s*["'][^"']{8,}["']/.test(sourceText)) errors.push("检测到疑似硬编码 aiApiKey");
+if (/["']?(?:appSecret|app_secret|APP_SECRET)["']?\s*[:=]\s*["'][^"']{8,}["']/i.test(sourceText)) errors.push("检测到疑似硬编码 AppSecret");
 
 if (errors.length) {
   for (const error of errors) console.error(error);
