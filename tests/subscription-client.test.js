@@ -46,9 +46,10 @@ function loadSettingsPage(overrides = {}) {
   const wx = overrides.wx || { showToast() {}, navigateTo() {}, setClipboardData() {} };
   const api = overrides.api || { callFunction: async () => createSettingsData(), showError() {} };
   const subscription = overrides.subscription || { requestReminderSubscription: async () => ({ templateId: "template-id", decision: "accept", requestId: "subscription_request" }) };
+  const testConsole = overrides.console || { error() {} };
   const moduleValue = { exports: {} };
   const context = vm.createContext({
-    console,
+    console: testConsole,
     Page(config) { pageConfig = config; },
     wx,
     module: moduleValue,
@@ -180,4 +181,114 @@ test("未接受订阅不登记可用次数", async () => {
 
   assert.deepEqual(events, []);
   assert.deepEqual(JSON.parse(JSON.stringify(toasts)), [{ title: "你已拒绝本次提醒授权，可在需要时再次开启", icon: "none" }]);
+});
+
+test("提醒状态查询失败时仍加载设置并标记为不可用", async () => {
+  const errors = [];
+  const fixture = loadSettingsPage({
+    api: {
+      callFunction(name) {
+        if (name === "settings") return Promise.resolve(createSettingsData());
+        return Promise.reject(new Error("提醒状态请求失败"));
+      },
+      showError(error) { errors.push(error); },
+    },
+  });
+
+  await fixture.pageConfig.load.call(fixture.page);
+
+  assert.equal(fixture.page.data.family.childName, "测试孩子");
+  assert.equal(fixture.page.data.reminderStatus.enabled, false);
+  assert.equal(fixture.page.data.reminderStatus.blockedReason, "STATUS_UNAVAILABLE");
+  assert.equal(fixture.page.data.reminderStatusText, "提醒状态暂不可用");
+  assert.equal(fixture.page.data.reminderStatusDetail, "暂时无法读取提醒状态，请重新查询后再授权");
+  assert.deepEqual(errors, []);
+});
+
+test("提醒功能未启用时不发起微信授权或订阅登记", async () => {
+  const events = [];
+  const toasts = [];
+  const fixture = loadSettingsPage({
+    api: {
+      callFunction(name, action) {
+        events.push(`${name}.${action}`);
+        return Promise.resolve(createReminderStatus());
+      },
+      showError() {},
+    },
+    subscription: {
+      requestReminderSubscription() {
+        events.push("subscription.request");
+        return Promise.resolve({ templateId: "template-id", decision: "accept", requestId: "subscription_request" });
+      },
+    },
+    wx: { showToast(options) { toasts.push(options); }, navigateTo() {}, setClipboardData() {} },
+  });
+  fixture.page.data.reminderStatus = { ...createReminderStatus(), enabled: false, blockedReason: "CONFIGURATION" };
+  fixture.page.data.reminderStatusDetail = "提醒服务尚未配置，暂不能增加提醒次数";
+
+  await fixture.pageConfig.addReminderSubscription.call(fixture.page);
+
+  assert.deepEqual(events, []);
+  assert.deepEqual(JSON.parse(JSON.stringify(toasts)), [{ title: "提醒服务尚未配置，暂不能增加提醒次数", icon: "none" }]);
+});
+
+test("配置未启用时显示可理解的提醒功能状态", async () => {
+  const fixture = loadSettingsPage({
+    api: {
+      callFunction(name) {
+        return Promise.resolve(name === "settings" ? createSettingsData() : { ...createReminderStatus(), enabled: false, blockedReason: "CONFIGURATION" });
+      },
+      showError() {},
+    },
+  });
+
+  await fixture.pageConfig.load.call(fixture.page);
+
+  assert.equal(fixture.page.data.reminderStatusText, "提醒功能未启用");
+  assert.equal(fixture.page.data.reminderStatusDetail, "提醒服务尚未配置，暂不能增加提醒次数");
+});
+
+test("微信授权失败时保留原生错误上下文并显示错误信息", async () => {
+  const reportedErrors = [];
+  const logs = [];
+  const fixture = loadSettingsPage({
+    api: {
+      callFunction() { throw new Error("不应登记订阅"); },
+      showError(error) { reportedErrors.push(error); },
+    },
+    subscription: { requestReminderSubscription: async () => Promise.reject({ errMsg: "requestSubscribeMessage:fail", errCode: 20004 }) },
+    console: { error(...args) { logs.push(args); } },
+  });
+  fixture.page.data.reminderStatus = createReminderStatus();
+
+  await fixture.pageConfig.addReminderSubscription.call(fixture.page);
+
+  assert.equal(reportedErrors[0].message, "requestSubscribeMessage:fail");
+  assert.equal(reportedErrors[0].errMsg, "requestSubscribeMessage:fail");
+  assert.equal(reportedErrors[0].errCode, 20004);
+  assert.deepEqual(JSON.parse(JSON.stringify(logs[0][1])), { message: "", errMsg: "requestSubscribeMessage:fail", code: "", errCode: 20004 });
+});
+
+test("订阅登记失败时保留云函数错误码上下文", async () => {
+  const reportedErrors = [];
+  const logs = [];
+  const fixture = loadSettingsPage({
+    api: {
+      callFunction(name, action) {
+        if (name === "reminder" && action === "recordSubscription") return Promise.reject({ message: "订阅登记失败", code: "RECORD_FAILED" });
+        return Promise.resolve(createSettingsData());
+      },
+      showError(error) { reportedErrors.push(error); },
+    },
+    subscription: { requestReminderSubscription: async () => ({ templateId: "template-id", decision: "accept", requestId: "subscription_request" }) },
+    console: { error(...args) { logs.push(args); } },
+  });
+  fixture.page.data.reminderStatus = createReminderStatus();
+
+  await fixture.pageConfig.addReminderSubscription.call(fixture.page);
+
+  assert.equal(reportedErrors[0].message, "订阅登记失败");
+  assert.equal(reportedErrors[0].code, "RECORD_FAILED");
+  assert.deepEqual(JSON.parse(JSON.stringify(logs[0][1])), { message: "订阅登记失败", errMsg: "", code: "RECORD_FAILED", errCode: "" });
 });
