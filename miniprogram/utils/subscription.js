@@ -1,4 +1,6 @@
 const VALID_DECISIONS = new Set(["accept", "reject", "ban", "filter"]);
+const { RELATIONS } = require("./constants");
+const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 function createRequestId(now, randomValue) {
   const timestamp = Number.isFinite(now) && now >= 0 ? Math.floor(now) : Date.now();
@@ -14,14 +16,19 @@ function getDecision(result, templateId) {
   return decision;
 }
 
-function shouldRequestSubscription({ reminderEnabled, currentRelation, remindTargets, estimatedAvailableCount }) {
-  return Boolean(
-    reminderEnabled
+function shouldRequestSubscription({ reminderEnabled, currentRelation, remindTargets, estimatedAvailableCount, templateId }) {
+  return reminderEnabled === true
     && typeof currentRelation === "string"
+    && Boolean(RELATIONS[currentRelation])
     && Array.isArray(remindTargets)
     && remindTargets.includes(currentRelation)
-    && Number(estimatedAvailableCount) <= 0,
-  );
+    && typeof estimatedAvailableCount === "number"
+    && Number.isFinite(estimatedAvailableCount)
+    && estimatedAvailableCount >= 0
+    && estimatedAvailableCount <= 50
+    && estimatedAvailableCount === 0
+    && typeof templateId === "string"
+    && TEMPLATE_ID_PATTERN.test(templateId);
 }
 
 async function requestReminderSubscription(templateId) {

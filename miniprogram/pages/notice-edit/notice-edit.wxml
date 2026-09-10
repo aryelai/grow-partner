@@ -1,21 +1,21 @@
 <view class="page">
   <view class="card">
-    <view class="field"><text class="field-label">标题 *</text><input class="input" maxlength="80" value="{{form.title}}" data-field="title" bindinput="onInput" /></view>
-    <view class="field"><text class="field-label">来源</text><input class="input" maxlength="60" value="{{form.source}}" data-field="source" bindinput="onInput" placeholder="例如：班主任-王老师" /></view>
+    <view class="field"><text class="field-label">标题 *</text><input class="input" maxlength="80" value="{{form.title}}" data-field="title" bindinput="onInput" disabled="{{initializing || initializationFailed}}" /></view>
+    <view class="field"><text class="field-label">来源</text><input class="input" maxlength="60" value="{{form.source}}" data-field="source" bindinput="onInput" placeholder="例如：班主任-王老师" disabled="{{initializing || initializationFailed}}" /></view>
     <view class="field"><text class="field-label">分类</text><view><text wx:for="{{categories}}" wx:key="value" class="tag {{form.category === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</text></view></view>
-    <view class="field"><text class="field-label">内容</text><textarea class="textarea" maxlength="3000" value="{{form.content}}" data-field="content" bindinput="onInput" /></view>
-    <button class="ghost-button" bindtap="chooseImages" disabled="{{uploading}}">{{uploading ? '上传中' : '添加图片（最多9张）'}}</button>
+    <view class="field"><text class="field-label">内容</text><textarea class="textarea" maxlength="3000" value="{{form.content}}" data-field="content" bindinput="onInput" disabled="{{initializing || initializationFailed}}" /></view>
+    <button class="ghost-button" bindtap="chooseImages" disabled="{{uploading || initializing || initializationFailed}}">{{uploading ? '上传中' : '添加图片（最多9张）'}}</button>
     <view class="image-grid"><view class="image-wrap" wx:for="{{form.images}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /><text data-index="{{index}}" bindtap="removeImage">×</text></view></view>
   </view>
   <view class="card">
-    <view class="switch-row"><text>定时提醒</text><switch color="#4A90D9" checked="{{reminderEnabled}}" bindchange="toggleReminder" /></view>
+    <view class="switch-row"><text>定时提醒</text><switch color="#4A90D9" checked="{{reminderEnabled}}" bindchange="toggleReminder" disabled="{{initializing || initializationFailed}}" /></view>
     <view wx:if="{{reminderEnabled}}">
-      <view class="deadline-row"><picker mode="date" value="{{remindDate}}" bindchange="onRemindDate"><view class="picker">{{remindDate}}</view></picker><picker mode="time" value="{{remindTime}}" bindchange="onRemindTime"><view class="picker">{{remindTime}}</view></picker></view>
-      <radio-group bindchange="onAdvanceChange"><label class="check"><radio value="1440" checked="{{form.remindAdvance[0] === 1440}}" />提前1天</label><label class="check"><radio value="120" checked="{{form.remindAdvance[0] === 120}}" />提前2小时</label></radio-group>
+      <view class="deadline-row"><picker mode="date" value="{{remindDate}}" bindchange="onRemindDate" disabled="{{initializing || initializationFailed}}"><view class="picker">{{remindDate}}</view></picker><picker mode="time" value="{{remindTime}}" bindchange="onRemindTime" disabled="{{initializing || initializationFailed}}"><view class="picker">{{remindTime}}</view></picker></view>
+      <radio-group bindchange="onAdvanceChange"><label class="check"><radio value="1440" checked="{{form.remindAdvance[0] === 1440}}" disabled="{{initializing || initializationFailed}}" />提前1天</label><label class="check"><radio value="120" checked="{{form.remindAdvance[0] === 120}}" disabled="{{initializing || initializationFailed}}" />提前2小时</label></radio-group>
       <view class="target-label">提醒对象</view>
-      <checkbox-group bindchange="onTargetsChange"><label class="check target-check" wx:for="{{reminderRelations}}" wx:key="value"><checkbox value="{{item.value}}" checked="{{item.checked}}" />{{item.label}}</label></checkbox-group>
+      <checkbox-group bindchange="onTargetsChange"><label class="check target-check" wx:for="{{reminderRelations}}" wx:key="value"><checkbox value="{{item.value}}" checked="{{item.checked}}" disabled="{{initializing || initializationFailed}}" />{{item.label}}</label></checkbox-group>
     </view>
   </view>
-  <button class="primary-button save" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="save">{{needsSubscription ? '保存并订阅提醒' : '保存通知'}}</button>
+  <button class="primary-button save" loading="{{submitting}}" disabled="{{submitting || uploading || initializing || initializationFailed}}" bindtap="save">{{needsSubscription ? '保存并订阅提醒' : '保存通知'}}</button>
   <button wx:if="{{id}}" class="danger-button remove-button" bindtap="remove">删除通知</button>
 </view>

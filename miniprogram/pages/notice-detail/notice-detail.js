@@ -5,6 +5,20 @@ const { formatDateTime } = require("../../utils/date");
 const { canPerform } = require("../../utils/permissions");
 
 const NOTICE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const VALID_ADVANCES = new Set([120, 1440]);
+
+function getValidReminderTime(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getAdvanceText(value) {
+  const advance = Array.isArray(value) ? value.map(Number).find((item) => VALID_ADVANCES.has(item)) : null;
+  if (advance === 1440) return "提前1天";
+  if (advance === 120) return "提前2小时";
+  return "未设置";
+}
 
 Page({
   data: { id: "", item: null, canEdit: false },
@@ -28,14 +42,15 @@ Page({
       const item = await callFunction("notice", "get", { id: this.data.id });
       const category = NOTICE_CATEGORIES.find((value) => value.value === item.category) || { label: "其他" };
       const remindTargets = Array.isArray(item.remindTargets) ? item.remindTargets : [];
-      const advance = Array.isArray(item.remindAdvance) ? Number(item.remindAdvance[0]) : 120;
+      const remindTime = getValidReminderTime(item.remindTime);
       this.setData({
         item: {
           ...item,
           images: Array.isArray(item.images) ? item.images.filter((value) => typeof value === "string") : [],
           categoryName: category.label,
-          remindTimeText: formatDateTime(item.remindTime),
-          advanceText: advance === 1440 ? "提前1天" : "提前2小时",
+          hasReminder: Boolean(remindTime),
+          remindTimeText: remindTime ? formatDateTime(remindTime) : "",
+          advanceText: getAdvanceText(item.remindAdvance),
           targetText: remindTargets.map((value) => RELATIONS[value]).filter(Boolean).join("、"),
         },
         canEdit: canPerform(this.currentUser.role, "manageNotice"),
