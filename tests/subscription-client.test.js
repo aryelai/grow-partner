@@ -791,9 +791,10 @@ test("通知详情拒绝非法标识且不请求云函数", async () => {
 test("通知详情显示公开字段并仅向有权限账号开放编辑", async () => {
   const fixture = createNoticePage("notice-detail", {
     api: {
-      callFunction(name, action) {
+      callFunction(name, action, payload) {
         assert.equal(`${name}.${action}`, "notice.get");
-        return Promise.resolve({ _id: "notice-id", category: "other", remindTime: "2026-09-10T08:00:00.000Z", remindAdvance: [1440], remindTargets: ["father", "unknown"], images: ["cloud://image"] });
+        assert.deepEqual(JSON.parse(JSON.stringify(payload)), { id: "notice-id" });
+        return Promise.resolve({ _id: "notice-id", title: "家长会", source: "班主任", category: "other", remindTime: "2026-09-10T08:00:00.000Z", remindAdvance: [1440], remindTargets: ["father", "unknown"], images: ["cloud://image"] });
       },
       showError() {},
       uploadFile: async () => "cloud://image",
@@ -802,6 +803,8 @@ test("通知详情显示公开字段并仅向有权限账号开放编辑", async
 
   await fixture.pageConfig.onLoad.call(fixture.page, { id: "notice-id" });
 
+  assert.equal(fixture.page.data.item.title, "家长会");
+  assert.equal(fixture.page.data.item.source, "班主任");
   assert.equal(fixture.page.data.item.categoryName, "其他");
   assert.equal(fixture.page.data.item.advanceText, "提前1天");
   assert.equal(fixture.page.data.item.targetText, "爸爸");

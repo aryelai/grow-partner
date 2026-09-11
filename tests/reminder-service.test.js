@@ -745,6 +745,8 @@ test("发送成功写入已发送时间并只扣减一次", async () => {
   assert.equal(delivery.sentAt.toISOString(), fixture.nowValue.toISOString());
   assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
   assert.equal(fixture.sendCalls.length, 1);
+  assert.equal(fixture.sendCalls[0].page, "pages/notice-detail/notice-detail?id=notice-1");
+  assert.equal(fixture.sendCalls[0].miniprogramState, "developer");
   assert.equal(result.sent, 1);
 });
 
