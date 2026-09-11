@@ -571,6 +571,11 @@ function createSchedulerFixture(options = {}) {
     subscriptions,
     users,
     nowValue,
+    setNow(value) {
+      const next = new Date(value);
+      assert.equal(Number.isNaN(next.getTime()), false, "测试时钟必须是有效时间");
+      nowValue.setTime(next.getTime());
+    },
     newService() { return createReminderService(dependencies); },
   };
 }
@@ -723,7 +728,29 @@ for (const scenario of [
 test("没有预计授权时保持等待且不调用微信", async () => {
   const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 0 }] });
   await fixture.service.run();
-  assert.equal([...fixture.deliveries.values()][0].status, "waiting_subscription");
+  const delivery = [...fixture.deliveries.values()][0];
+  assert.equal(delivery.status, "waiting_subscription");
+  assert.equal(delivery.attemptCount, 0);
+  assert.equal(delivery.quotaFinalized, false);
+  assert.equal(delivery.nextAttemptAt.toISOString(), new Date(fixture.nowValue.getTime() + 60 * 1000).toISOString());
+  assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
+  assert.equal(fixture.sendCalls.length, 0);
+});
+
+test("无授权任务退避不越过通知截止时间", async () => {
+  const fixture = createSchedulerFixture({ subscriptions: [{ openid: testUser.openid, estimatedAvailableCount: 0 }] });
+  const deadlineAt = new Date(fixture.nowValue.getTime() + 30 * 1000);
+  fixture.notices.get("notice-1").remindTime = deadlineAt;
+  fixture.notices.get("notice-1").deadlineAt = deadlineAt;
+
+  await fixture.service.run();
+
+  const delivery = [...fixture.deliveries.values()][0];
+  assert.equal(delivery.nextAttemptAt.toISOString(), deadlineAt.toISOString());
+  assert.equal(delivery.status, "waiting_subscription");
+  assert.equal(delivery.attemptCount, 0);
+  assert.equal(delivery.quotaFinalized, false);
+  assert.equal(fixture.subscriptions.get(subscriptionId).estimatedAvailableCount, 0);
   assert.equal(fixture.sendCalls.length, 0);
 });
 
@@ -1213,4 +1240,51 @@ test("调度按 nextAttemptAt 选取最早到期任务以避免发送饥饿", as
 
   assert.equal(result.sent, 1);
   assert.equal(fixture.sendCalls.length, 1);
+});
+
+test("前五十条无授权任务退避后下一轮可处理后续有额度任务", async () => {
+  const users = Array.from({ length: 51 }, (_, index) => ({
+    _id: `user-${index + 1}`,
+    openid: `openid-${index + 1}`,
+    familyId: testUser.familyId,
+    role: index === 0 ? "creator" : "member",
+    relation: "father",
+  }));
+  const deadlineAt = new Date("2026-09-08T18:00:00.000Z");
+  const deliveries = users.map((user, index) => ({
+    _id: `delivery-${index + 1}`,
+    deliveryId: `delivery-${index + 1}`,
+    noticeId: "notice-1",
+    familyId: testUser.familyId,
+    reminderVersion: 1,
+    recipientOpenid: user.openid,
+    recipientRelation: user.relation,
+    scheduledAt: new Date("2026-09-08T14:00:00.000Z"),
+    deadlineAt,
+    status: "waiting_subscription",
+    attemptCount: 0,
+    nextAttemptAt: new Date("2026-09-08T15:00:00.000Z"),
+    lockExpiresAt: null,
+  }));
+  const subscriptions = users.map((user, index) => ({
+    openid: user.openid,
+    estimatedAvailableCount: index === 50 ? 1 : 0,
+  }));
+  const fixture = createSchedulerFixture({ users, deliveries, subscriptions });
+  fixture.notices.get("notice-1").reminderState = "materialized";
+
+  const first = await fixture.service.run();
+  assert.equal(first.sent, 0);
+  for (const delivery of deliveries.slice(0, 50)) {
+    const deferred = fixture.deliveries.get(delivery.deliveryId);
+    assert.ok(deferred.nextAttemptAt > fixture.nowValue);
+    assert.ok(deferred.nextAttemptAt <= deadlineAt);
+  }
+
+  fixture.setNow(new Date(fixture.nowValue.getTime() + 30 * 60 * 1000));
+  const second = await fixture.service.run();
+
+  assert.equal(second.sent, 1);
+  assert.equal(fixture.sendCalls.length, 1);
+  assert.equal(fixture.sendCalls[0].touser, users[50].openid);
 });

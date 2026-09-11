@@ -16,6 +16,7 @@ const AVAILABLE_COUNT_LIMIT = 50;
 const NOTICE_SCAN_LIMIT = 20;
 const DELIVERY_SCAN_LIMIT = 50;
 const LOCK_DURATION_MS = 10 * 60 * 1000;
+const NO_QUOTA_RETRY_DELAY_MS = 60 * 1000;
 const RETRY_DELAYS_MS = [30 * 60 * 1000, 60 * 60 * 1000, 120 * 60 * 1000];
 
 function normalizeCount(value, maximum) {
@@ -257,7 +258,14 @@ function createReminderService({ database, sendSubscribeMessage, now = () => new
         return { terminalStatus: "failed" };
       }
       const availableCount = normalizeCount(subscription && subscription.estimatedAvailableCount, AVAILABLE_COUNT_LIMIT);
-      if (availableCount <= 0) return null;
+      if (availableCount <= 0) {
+        const nextAttemptAt = new Date(Math.min(currentTime.getTime() + NO_QUOTA_RETRY_DELAY_MS, deadline.getTime()));
+        await transaction.collection("reminder_deliveries").doc(deliveryId).update({ data: {
+          nextAttemptAt,
+          updatedAt: currentTime,
+        } });
+        return null;
+      }
       const next = {
         status: "sending",
         attemptCount: (delivery.attemptCount || 0) + 1,
