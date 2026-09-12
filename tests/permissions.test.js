@@ -305,12 +305,11 @@ test("作业详情删除使用请求动作且不伪造资源所有权", async ()
   }
 });
 
-test("孩子触发上传保存删除时不会产生外部副作用", async () => {
+test("孩子触发保存删除时不会产生外部副作用", async () => {
   const homeworkEdit = loadPage("miniprogram/pages/homework-edit/homework-edit.js");
   homeworkEdit.page.currentUser = { role: "child" };
-  await homeworkEdit.page.chooseMedia();
   await homeworkEdit.page.save();
-  assert.deepEqual([homeworkEdit.chooseMediaCalls.length, homeworkEdit.uploadFileCalls.length, homeworkEdit.callFunctionCalls.length], [0, 0, 0]);
+  assert.equal(homeworkEdit.callFunctionCalls.length, 0);
 
   const homeworkDetail = loadPage("miniprogram/pages/homework-detail/homework-detail.js");
   homeworkDetail.page.currentUser = { role: "child" };
@@ -319,10 +318,9 @@ test("孩子触发上传保存删除时不会产生外部副作用", async () =>
 
   const noticeEdit = loadPage("miniprogram/pages/notice-edit/notice-edit.js");
   noticeEdit.page.currentUser = { role: "child" };
-  await noticeEdit.page.chooseImages();
   await noticeEdit.page.save();
   await noticeEdit.page.remove();
-  assert.deepEqual([noticeEdit.chooseMediaCalls.length, noticeEdit.uploadFileCalls.length, noticeEdit.showModalCalls.length, noticeEdit.callFunctionCalls.length], [0, 0, 0, 0]);
+  assert.deepEqual([noticeEdit.showModalCalls.length, noticeEdit.callFunctionCalls.length], [0, 0]);
 
   const planEdit = loadPage("miniprogram/pages/plan-edit/plan-edit.js");
   planEdit.page.currentUser = { role: "child" };
@@ -333,90 +331,6 @@ test("孩子触发上传保存删除时不会产生外部副作用", async () =>
   assert.equal(homeworkEdit.toastCalls.at(-1).icon, "none");
   assert.equal(noticeEdit.toastCalls.at(-1).icon, "none");
   assert.equal(planEdit.toastCalls.at(-1).icon, "none");
-});
-
-test("上传前会使用最新会话拒绝降级和失效账号", async () => {
-  for (const item of [
-    { path: "miniprogram/pages/homework-edit/homework-edit.js", handler: "chooseMedia" },
-    { path: "miniprogram/pages/notice-edit/notice-edit.js", handler: "chooseImages" },
-  ]) {
-    for (const session of [
-      { user: { role: "child", familyId: "family-1" }, family: { currentSemester: "2026下", educationStage: "junior_high" } },
-      null,
-    ]) {
-      const fixture = loadPage(item.path, { session });
-      fixture.page.currentUser = { role: "creator", familyId: "family-1" };
-      await fixture.page[item.handler]();
-      assert.deepEqual([fixture.chooseMediaCalls.length, fixture.uploadFileCalls.length], [0, 0], item.path);
-    }
-  }
-});
-
-test("媒体选择期间账号降级时不会上传文件", async () => {
-  for (const item of [
-    { path: "miniprogram/pages/homework-edit/homework-edit.js", handler: "chooseMedia", tempFile: { fileType: "image", size: 1, tempFilePath: "image.jpg" } },
-    { path: "miniprogram/pages/notice-edit/notice-edit.js", handler: "chooseImages", tempFile: { fileType: "image", size: 1, tempFilePath: "image.jpg" } },
-  ]) {
-    const fixture = loadPage(item.path, {
-      session: { user: { role: "creator", familyId: "family-1" }, family: { currentSemester: "2026下", educationStage: "junior_high" } },
-      chooseMedia: async () => {
-        fixture.setSession({ user: { role: "child", familyId: "family-1" }, family: { currentSemester: "2026下", educationStage: "junior_high" } });
-        return { tempFiles: [item.tempFile] };
-      },
-    });
-    fixture.page.currentUser = { role: "creator", familyId: "family-1" };
-    await fixture.page[item.handler]();
-    assert.equal(fixture.uploadFileCalls.length, 0, item.path);
-  }
-});
-
-test("上传使用媒体选择返回后的最新家庭标识", async () => {
-  for (const item of [
-    { path: "miniprogram/pages/homework-edit/homework-edit.js", handler: "chooseMedia", tempFile: { fileType: "image", size: 1, tempFilePath: "image.jpg" } },
-    { path: "miniprogram/pages/notice-edit/notice-edit.js", handler: "chooseImages", tempFile: { fileType: "image", size: 1, tempFilePath: "image.jpg" } },
-  ]) {
-    const fixture = loadPage(item.path, {
-      session: { user: { role: "creator", familyId: "family-old" }, family: { currentSemester: "2026下", educationStage: "junior_high" } },
-      chooseMedia: async () => {
-        fixture.setSession({ user: { role: "creator", familyId: "family-new" }, family: { currentSemester: "2026下", educationStage: "junior_high" } });
-        return { tempFiles: [item.tempFile] };
-      },
-    });
-    await fixture.page[item.handler]();
-    assert.equal(fixture.uploadFileCalls.length, 1, item.path);
-    assert.match(fixture.uploadFileCalls[0][0], /family-new/);
-    assert.doesNotMatch(fixture.uploadFileCalls[0][0], /family-old/);
-  }
-});
-
-test("第二次上传权限刷新完成前不会设置上传状态或上传", async () => {
-  for (const item of [
-    { path: "miniprogram/pages/homework-edit/homework-edit.js", handler: "chooseMedia", tempFile: { fileType: "image", size: 1, tempFilePath: "image.jpg" } },
-    { path: "miniprogram/pages/notice-edit/notice-edit.js", handler: "chooseImages", tempFile: { fileType: "image", size: 1, tempFilePath: "image.jpg" } },
-  ]) {
-    let resolveSession;
-    let reachedSecondRefresh;
-    let sessionCalls = 0;
-    const refreshedSession = new Promise((resolve) => { resolveSession = resolve; });
-    const secondRefreshReached = new Promise((resolve) => { reachedSecondRefresh = resolve; });
-    const fixture = loadPage(item.path, {
-      requireFamily: async () => {
-        sessionCalls += 1;
-        if (sessionCalls === 1) return { user: { role: "creator", familyId: "family-1" }, family: { currentSemester: "2026下", educationStage: "junior_high" } };
-        reachedSecondRefresh();
-        return refreshedSession;
-      },
-      chooseMedia: async () => ({ tempFiles: [item.tempFile] }),
-    });
-    const uploadPromise = fixture.page[item.handler]();
-    await secondRefreshReached;
-    assert.equal(sessionCalls, 2, item.path);
-    assert.equal(fixture.page.data.uploading, false, item.path);
-    assert.equal(fixture.uploadFileCalls.length, 0, item.path);
-    resolveSession({ user: { role: "child", familyId: "family-1" }, family: { currentSemester: "2026下", educationStage: "junior_high" } });
-    await uploadPromise;
-    assert.equal(fixture.uploadFileCalls.length, 0, item.path);
-  }
 });
 
 test("权限刷新等待期间保存操作只提交一次", async () => {
@@ -458,21 +372,6 @@ test("会话请求失败时页面副作用被安全拒绝", async () => {
     assert.equal(fixture.showErrorCalls.length, 1, item.path);
     assert.equal(fixture.page.data.submitting, false, item.path);
     assert.equal(fixture.page.currentUser, null, item.path);
-  }
-  for (const item of [
-    { path: "miniprogram/pages/homework-edit/homework-edit.js", handler: "chooseMedia" },
-    { path: "miniprogram/pages/notice-edit/notice-edit.js", handler: "chooseImages" },
-  ]) {
-    const fixture = loadPage(item.path, { requireFamily: async () => { throw rejection; } });
-    fixture.page.currentUser = { role: "creator", familyId: "family-old" };
-    fixture.page.familyId = "family-old";
-    fixture.page.setData({ uploading: true });
-    await assert.doesNotReject(fixture.page[item.handler](), item.path);
-    assert.deepEqual([fixture.chooseMediaCalls.length, fixture.uploadFileCalls.length], [0, 0], item.path);
-    assert.equal(fixture.showErrorCalls.length, 1, item.path);
-    assert.equal(fixture.page.data.uploading, false, item.path);
-    assert.equal(fixture.page.currentUser, null, item.path);
-    assert.equal(fixture.page.familyId, null, item.path);
   }
   const detail = loadPage("miniprogram/pages/homework-detail/homework-detail.js", { requireFamily: async () => { throw rejection; } });
   detail.page.currentUser = { role: "creator", familyId: "family-old" };

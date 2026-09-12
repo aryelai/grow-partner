@@ -8,10 +8,10 @@
   <view class="card checkin-card">
     <view class="section-title">今日打卡</view>
     <checkbox-group bindchange="onItemsChange"><label class="check-item" wx:for="{{todayItems}}" wx:key="name"><checkbox value="{{item.name}}" checked="{{item.done}}" color="#27AE60" /><text>{{item.name}}</text><text wx:if="{{!item.required}}" class="muted">（选做）</text></label></checkbox-group>
-    <button class="ghost-button photo-button" bindtap="choosePhoto" disabled="{{uploading}}">{{photo ? '重新上传照片' : '上传打卡照片'}}</button>
+    <view class="muted">家庭内测期间暂不支持新增照片，已有打卡照片仍可查看。</view>
     <image wx:if="{{photo}}" class="photo" src="{{photo}}" mode="aspectFill" />
     <textarea class="textarea note" maxlength="300" placeholder="记录今天的感受" value="{{note}}" bindinput="onNoteInput" />
-    <button class="primary-button" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="checkIn">保存今日打卡</button>
+    <button class="primary-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="checkIn">保存今日打卡</button>
   </view>
   <button wx:if="{{canManage}}" class="danger-button remove-button" bindtap="remove">停用此习惯</button>
 </view>

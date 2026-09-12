@@ -1,9 +1,17 @@
 const cloud = require("wx-server-sdk");
 const { validateProfile } = require("./profile");
+const {
+  createRegistrationAttemptId,
+  getRegistrationMode,
+  isValidInviteCode,
+  normalizeInviteCode,
+} = require("./registration");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db = cloud.database();
+const REGISTRATION_ATTEMPT_LIMIT = 20;
+const REGISTRATION_DENIED_MESSAGE = "暂时无法完成注册，请检查家庭邀请码后重试";
 
 function success(data, message = "") {
   return { success: true, data, message };
@@ -43,9 +51,10 @@ function publicFamily(family) {
 }
 
 async function getProfile(openid) {
+  const registrationMode = getRegistrationMode(process.env.REGISTRATION_MODE);
   const user = await findUser(openid);
   if (!user) {
-    return success({ registered: false, user: null, family: null, pendingJoinRequest: null });
+    return success({ registered: false, user: null, family: null, pendingJoinRequest: null, registrationMode });
   }
 
   let family = null;
@@ -73,7 +82,46 @@ async function getProfile(openid) {
       status: pendingResult.data[0].status,
       createdAt: pendingResult.data[0].createdAt,
     } : null,
+    registrationMode,
   });
+}
+
+function isMissingDocumentError(error) {
+  const errorCode = String(error.code || error.errCode || "");
+  const errorMessage = String(error.errMsg || error.message || "");
+  return errorCode === "DOCUMENT_NOT_FOUND" || /(?:document.*(?:does not exist|not found)|not exist)/i.test(errorMessage);
+}
+
+async function consumeRegistrationAttempt(openid) {
+  const date = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const documentId = createRegistrationAttemptId(openid, date);
+  return db.runTransaction(async (transaction) => {
+    let current = null;
+    try {
+      current = (await transaction.collection("family_search_limits").doc(documentId).get()).data;
+    } catch (error) {
+      if (!isMissingDocumentError(error)) throw error;
+    }
+    if (current && current.count >= REGISTRATION_ATTEMPT_LIMIT) return false;
+    await transaction.collection("family_search_limits").doc(documentId).set({
+      data: {
+        openid,
+        date,
+        count: (current ? current.count : 0) + 1,
+        purpose: "registration_invite",
+        updatedAt: new Date(),
+      },
+    });
+    return true;
+  });
+}
+
+async function canRegisterWithInvite(openid, value) {
+  const inviteCode = normalizeInviteCode(value);
+  if (!isValidInviteCode(inviteCode)) return false;
+  if (!await consumeRegistrationAttempt(openid)) return false;
+  const result = await db.collection("families").where({ inviteCode }).limit(1).get();
+  return result.data.length > 0;
 }
 
 async function register(openid, event) {
@@ -87,6 +135,11 @@ async function register(openid, event) {
       data: { nickname, avatar, lastLoginAt: now },
     });
   } else {
+    const registrationMode = getRegistrationMode(process.env.REGISTRATION_MODE);
+    if (registrationMode === "closed") return failure(REGISTRATION_DENIED_MESSAGE);
+    if (registrationMode === "family_invite" && !await canRegisterWithInvite(openid, event.inviteCode)) {
+      return failure(REGISTRATION_DENIED_MESSAGE);
+    }
     try {
       await db.collection("users").add({
         data: {

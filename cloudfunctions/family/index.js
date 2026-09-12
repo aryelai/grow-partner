@@ -35,6 +35,12 @@ const RELATION_NAMES = {
   aunt_paternal: "婶婶", uncle_maternal: "舅舅",
   aunt_maternal: "舅妈", brother: "哥哥", sister: "姐姐", child: "孩子",
 };
+const REGISTRATION_MODES = new Set(["open", "family_invite", "closed"]);
+
+function getRegistrationMode() {
+  const value = process.env.REGISTRATION_MODE;
+  return REGISTRATION_MODES.has(value) ? value : "closed";
+}
 
 function success(data, message = "") {
   return { success: true, data, message };
@@ -88,6 +94,7 @@ async function createInviteCode() {
 }
 
 async function createFamily(openid, event) {
+  if (getRegistrationMode() !== "open") return failure("当前版本暂不支持创建新家庭");
   const user = await requireUser(openid);
   if (user.familyId) return failure("您已经加入家庭");
   const childName = cleanText(event.childName, 20);

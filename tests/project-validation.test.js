@@ -113,6 +113,35 @@ test("运行时配置包含 AppSecret 会使项目静态校验失败", () => {
   }, (result) => assertValidationFailure(result, /检测到疑似硬编码 AppSecret/));
 });
 
+test("运行时代码恢复客户端云存储上传会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const clientPath = path.join(temporaryRoot, "miniprogram/utils/api.js");
+    const source = fs.readFileSync(clientPath, "utf8");
+    fs.writeFileSync(clientPath, `${source}\nfunction unsafeUpload() { return wx.cloud.uploadFile({}); }\n`);
+  }, (result) => assertValidationFailure(result, /家庭内测版运行时代码不得直接上传云存储文件/));
+});
+
+test("运行时代码恢复媒体选择会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const clientPath = path.join(temporaryRoot, "miniprogram/pages/login/login.js");
+    const source = fs.readFileSync(clientPath, "utf8");
+    fs.writeFileSync(clientPath, `${source}\nfunction unsafeChooseMedia() { return wx.chooseMedia({}); }\n`);
+  }, (result) => assertValidationFailure(result, /家庭内测版运行时代码不得发起媒体选择/));
+});
+
+for (const [requiredText, expectedError] of [
+  ["REGISTRATION_MODE=family_invite", /部署文档缺少家庭邀请码注册模式/],
+  ['"write": "false"', /部署文档缺少云存储客户端禁写规则/],
+]) {
+  test(`部署文档缺少 ${requiredText} 会使项目静态校验失败`, () => {
+    withProjectCopy((temporaryRoot) => {
+      const guidePath = path.join(temporaryRoot, "cloudfunctions/README.md");
+      const source = fs.readFileSync(guidePath, "utf8");
+      fs.writeFileSync(guidePath, source.replaceAll(requiredText, ""));
+    }, (result) => assertValidationFailure(result, expectedError));
+  });
+}
+
 test("测试源码包含疑似 API Key 会使项目静态校验失败", () => {
   withProjectCopy((temporaryRoot) => {
     const fixturePath = path.join(temporaryRoot, "tests/fixture-secret.test.js");

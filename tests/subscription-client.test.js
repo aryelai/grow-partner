@@ -456,7 +456,6 @@ test("保存挂起期间冻结全部交互并提交点击时快照", async () =>
     fixture.pageConfig.onAdvanceChange.call(fixture.page, { detail: { value: "1440" } });
     fixture.pageConfig.onTargetsChange.call(fixture.page, { detail: { value: ["mother"] } });
     fixture.pageConfig.removeImage.call(fixture.page, { currentTarget: { dataset: { index: 0 } } });
-    interactionPromises.push(Promise.resolve(fixture.pageConfig.chooseImages.call(fixture.page)));
     interactionPromises.push(Promise.resolve(fixture.pageConfig.remove.call(fixture.page)));
     assert.deepEqual(structuredClone(expectedState()), initialState);
   };

@@ -22,8 +22,8 @@
     <view class="media-grid">
       <view class="media-item" wx:for="{{form.images}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /><text class="remove" data-type="images" data-index="{{index}}" bindtap="removeMedia">×</text></view>
       <view class="media-item video" wx:for="{{form.videos}}" wx:key="*this">视频<text class="remove" data-type="videos" data-index="{{index}}" bindtap="removeMedia">×</text></view>
-      <button class="media-add" bindtap="chooseMedia" disabled="{{uploading}}">{{uploading ? '上传中' : '+ 图片/视频'}}</button>
     </view>
+    <view class="muted">家庭内测期间暂不支持新增附件，已有附件仍可查看。</view>
     <view class="link-row"><input class="input" value="{{linkInput}}" bindinput="onLinkInput" placeholder="https:// 开头的链接" /><button size="mini" bindtap="addLink">添加</button></view>
     <view class="list-item" wx:for="{{form.links}}" wx:key="*this"><text class="link-text">{{item}}</text><text class="remove-text" data-index="{{index}}" bindtap="removeLink">删除</text></view>
   </view>
@@ -34,5 +34,5 @@
     <view><text class="tag removable" wx:for="{{form.extraTags}}" wx:key="*this" data-index="{{index}}" bindtap="removeTag">{{item}} ×</text></view>
   </view>
 
-  <button class="primary-button save-button" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="save">保存作业</button>
+  <button class="primary-button save-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="save">保存作业</button>
 </view>

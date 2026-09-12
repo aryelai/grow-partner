@@ -4,7 +4,7 @@
     <view class="field"><text class="field-label">来源</text><input class="input" maxlength="60" value="{{form.source}}" data-field="source" bindinput="onInput" placeholder="例如：班主任-王老师" disabled="{{submitting || initializing || initializationFailed}}" /></view>
     <view class="field"><text class="field-label">分类</text><view><text wx:for="{{categories}}" wx:key="value" class="tag {{form.category === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</text></view></view>
     <view class="field"><text class="field-label">内容</text><textarea class="textarea" maxlength="3000" value="{{form.content}}" data-field="content" bindinput="onInput" disabled="{{submitting || initializing || initializationFailed}}" /></view>
-    <button class="ghost-button" bindtap="chooseImages" disabled="{{submitting || uploading || initializing || initializationFailed}}">{{uploading ? '上传中' : '添加图片（最多9张）'}}</button>
+    <view class="muted">家庭内测期间暂不支持新增附件，已有图片仍可查看。</view>
     <view class="image-grid"><view class="image-wrap" wx:for="{{form.images}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /><text wx:if="{{!submitting}}" data-index="{{index}}" bindtap="removeImage">×</text></view></view>
   </view>
   <view class="card">
@@ -16,6 +16,6 @@
       <checkbox-group bindchange="onTargetsChange"><label class="check target-check" wx:for="{{reminderRelations}}" wx:key="value"><checkbox value="{{item.value}}" checked="{{item.checked}}" disabled="{{submitting || initializing || initializationFailed}}" />{{item.label}}</label></checkbox-group>
     </view>
   </view>
-  <button class="primary-button save" loading="{{submitting}}" disabled="{{submitting || uploading || initializing || initializationFailed}}" bindtap="save">{{needsSubscription ? '保存并订阅提醒' : '保存通知'}}</button>
+  <button class="primary-button save" loading="{{submitting}}" disabled="{{submitting || initializing || initializationFailed}}" bindtap="save">{{needsSubscription ? '保存并订阅提醒' : '保存通知'}}</button>
   <button wx:if="{{id && !submitting && !initializing && !initializationFailed}}" class="danger-button remove-button" bindtap="remove">删除通知</button>
 </view>

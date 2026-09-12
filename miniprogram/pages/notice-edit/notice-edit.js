@@ -1,4 +1,4 @@
-const { callFunction, showError, uploadFile } = require("../../utils/api");
+const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { NOTICE_CATEGORIES, RELATIONS } = require("../../utils/constants");
 const { formatDate } = require("../../utils/date");
@@ -82,7 +82,7 @@ Page({
     id: "", categories: NOTICE_CATEGORIES, reminderRelations: createReminderRelations([]),
     form: { semester: "2026下", title: "", source: "", category: "other", content: "", images: [], remindAdvance: [120], remindTargets: [] },
     reminderEnabled: false, reminderStatus: createUnavailableReminderStatus(), needsSubscription: false, initializing: false, initializationFailed: false,
-    remindDate: formatDate(new Date()), remindTime: "08:00", uploading: false, submitting: false,
+    remindDate: formatDate(new Date()), remindTime: "08:00", submitting: false,
   },
   async refreshPermission() {
     let session;
@@ -177,21 +177,6 @@ Page({
     if (this.isFormLocked()) return;
     const form = { ...this.data.form, remindTargets: normalizeTargets(event.detail.value) };
     this.setData({ form, reminderRelations: createReminderRelations(form.remindTargets), needsSubscription: this.getSubscriptionNeed({ form }) });
-  },
-  async chooseImages() {
-    if (this.isFormLocked()) return;
-    if (!await this.refreshPermission()) { this.setData({ uploading: false }); return; }
-    try {
-      const result = await wx.chooseMedia({ count: 9 - this.data.form.images.length, mediaType: ["image"], sizeType: ["compressed"] });
-      const session = await this.refreshPermission();
-      if (!session) return;
-      if (result.tempFiles.some((item) => item.size > 10 * 1024 * 1024)) { wx.showToast({ title: "单张图片不能超过10MB", icon: "none" }); return; }
-      this.setData({ uploading: true });
-      const stamp = Date.now();
-      const images = await Promise.all(result.tempFiles.map((item, index) => uploadFile(`notices/${session.user.familyId}/${stamp}-${index}.jpg`, item.tempFilePath)));
-      this.setData({ "form.images": [...this.data.form.images, ...images] });
-    } catch (error) { if (!String(error.errMsg || error.message).includes("cancel")) showError(error); }
-    finally { this.setData({ uploading: false }); }
   },
   removeImage(event) { if (this.isFormLocked()) return; const images = [...this.data.form.images]; images.splice(event.currentTarget.dataset.index, 1); this.setData({ "form.images": images }); },
   hasMaterializedReminderChanged(remindTime, form, id) {

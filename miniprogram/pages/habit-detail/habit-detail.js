@@ -1,4 +1,4 @@
-const { callFunction, showError, uploadFile } = require("../../utils/api");
+const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { formatDate } = require("../../utils/date");
 
@@ -20,7 +20,7 @@ function buildCalendar(month, checkIns, today) {
 }
 
 Page({
-  data: { id: "", habit: null, month: currentMonth(), weekdays: ["一", "二", "三", "四", "五", "六", "日"], leadingBlanks: [], calendarDays: [], todayItems: [], today: formatDate(new Date()), note: "", photo: "", streak: 0, totalPoints: 0, canManage: false, uploading: false, submitting: false },
+  data: { id: "", habit: null, month: currentMonth(), weekdays: ["一", "二", "三", "四", "五", "六", "日"], leadingBlanks: [], calendarDays: [], todayItems: [], today: formatDate(new Date()), note: "", photo: "", streak: 0, totalPoints: 0, canManage: false, submitting: false },
   async onLoad(options) { const session = await requireFamily(); if (!session) return; this.familyId = session.user.familyId; this.setData({ id: options.id || "", canManage: session.user.role !== "child" }); await this.load(); },
   async load() {
     try {
@@ -34,7 +34,6 @@ Page({
   changeMonth(event) { this.setData({ month: shiftMonth(this.data.month, Number(event.currentTarget.dataset.offset)) }); this.load(); },
   onItemsChange(event) { const selected = new Set(event.detail.value); this.setData({ todayItems: this.data.todayItems.map((item) => ({ ...item, done: selected.has(item.name) })) }); },
   onNoteInput(event) { this.setData({ note: event.detail.value }); },
-  async choosePhoto() { try { const result = await wx.chooseMedia({ count: 1, mediaType: ["image"], sizeType: ["compressed"] }); if (!result.tempFiles.length) return; if (result.tempFiles[0].size > 10 * 1024 * 1024) { wx.showToast({ title: "图片不能超过10MB", icon: "none" }); return; } this.setData({ uploading: true }); const photo = await uploadFile(`habits/${this.familyId}/${this.data.id}/${Date.now()}.jpg`, result.tempFiles[0].tempFilePath); this.setData({ photo }); } catch (error) { if (!String(error.errMsg || error.message).includes("cancel")) showError(error); } finally { this.setData({ uploading: false }); } },
   async checkIn() { this.setData({ submitting: true }); try { await callFunction("habit", "checkIn", { habitId: this.data.id, date: this.data.today, items: this.data.todayItems.map(({ name, done }) => ({ name, done })), photo: this.data.photo, note: this.data.note }); wx.showToast({ title: "打卡已保存", icon: "success" }); await this.load(); } catch (error) { showError(error, "打卡保存失败"); } finally { this.setData({ submitting: false }); } },
   remove() { wx.showModal({ title: "停用习惯", content: "历史打卡会保留，确认停用吗？", success: async (result) => { if (!result.confirm) return; try { await callFunction("habit", "remove", { id: this.data.id }); wx.navigateBack(); } catch (error) { showError(error); } } }); },
 });

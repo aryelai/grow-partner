@@ -5,19 +5,34 @@
     <view class="brand-subtitle">把作业、通知与成长计划放在一起</view>
   </view>
 
-  <view class="card profile-card" wx:if="{{!registered}}">
-    <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
-      <image wx:if="{{avatar}}" class="avatar" src="{{avatar}}" mode="aspectFill" />
-      <view wx:else class="avatar-placeholder">选择头像</view>
-    </button>
+  <view class="card profile-card" wx:if="{{!loading && !loadFailed && !registered && registrationMode !== 'closed'}}">
+    <view class="avatar-button"><view class="avatar-placeholder">头像</view></view>
+    <view class="upload-disabled-tip">家庭内测期间暂不支持新增头像，注册后可正常使用其他功能。</view>
     <input class="input nickname-input" type="nickname" maxlength="30" placeholder="输入昵称" value="{{nickname}}" bindinput="onNicknameInput" />
+    <view class="field" wx:if="{{registrationMode === 'family_invite'}}">
+      <text class="field-label">家庭邀请码</text>
+      <input class="input invite-input" maxlength="9" placeholder="例如：ABCD-EFGH" value="{{inviteCode}}" bindinput="onInviteCodeInput" />
+      <view class="privacy-note">注册成功后仍需在加入家庭页再次输入邀请码并等待创建者审批。</view>
+    </view>
     <button class="primary-button register-button" bindtap="register" loading="{{submitting}}" disabled="{{submitting}}">完成注册并继续</button>
     <view class="privacy-note">无需手机号，账号会与当前微信安全关联。</view>
   </view>
 
-  <view class="card family-choice" wx:if="{{registered && !hasFamily}}">
+  <view class="card profile-card" wx:if="{{!loading && !loadFailed && !registered && registrationMode === 'closed'}}">
+    <view class="section-title">家庭内测暂未开放注册</view>
+    <view class="privacy-note">请联系家庭创建者确认内测资格后再试。</view>
+    <view class="upload-disabled-tip">家庭内测期间暂不支持新增头像。</view>
+  </view>
+
+  <view class="card profile-card" wx:if="{{!loading && loadFailed}}">
+    <view class="section-title">登录状态加载失败</view>
+    <view class="privacy-note">请检查网络后重试，系统不会把临时故障当作注册关闭。</view>
+    <button class="ghost-button choice-button" bindtap="retryProfile">重新加载</button>
+  </view>
+
+  <view class="card family-choice" wx:if="{{!loading && !loadFailed && registered && !hasFamily}}">
     <view class="section-title">选择使用方式</view>
-    <button class="primary-button choice-button" bindtap="goCreateFamily">创建孩子档案与家庭</button>
+    <button wx:if="{{canCreateFamily}}" class="primary-button choice-button" bindtap="goCreateFamily">创建孩子档案与家庭</button>
     <button class="ghost-button choice-button" bindtap="goJoinFamily">加入已有家庭</button>
     <view class="pending-tip" wx:if="{{pending}}">加入申请正在等待创建者处理</view>
   </view>

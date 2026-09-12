@@ -20,11 +20,13 @@ function loadLoginFunction(database) {
     console: { error() {} },
     Date,
     Error,
+    process: { env: { REGISTRATION_MODE: "open" } },
     module: moduleValue,
     exports: moduleValue.exports,
     require(request) {
       if (request === "wx-server-sdk") return cloud;
       if (request === "./profile") return require("../cloudfunctions/login/profile");
+      if (request === "./registration") return require("../cloudfunctions/login/registration");
       throw new Error(`测试未实现依赖：${request}`);
     },
   });

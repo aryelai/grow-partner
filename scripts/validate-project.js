@@ -141,6 +141,10 @@ if (runtimeSourceText.includes(forbiddenCalendarTemplateId)) errors.push("检测
 if (/\bsk-[A-Za-z0-9_-]{16,}\b/.test(sourceText)) errors.push("检测到疑似硬编码 API Key");
 if (/apiKey\s*[:=]\s*["'][^"']{8,}["']/.test(sourceText)) errors.push("检测到疑似硬编码 aiApiKey");
 if (/["']?(?:appSecret|app_secret|APP_SECRET)["']?\s*[:=]\s*["'][^"']{8,}["']/i.test(sourceText)) errors.push("检测到疑似硬编码 AppSecret");
+if (/wx\.cloud\.uploadFile\s*\(/.test(runtimeSourceText)) errors.push("家庭内测版运行时代码不得直接上传云存储文件");
+if (/wx\.chooseMedia\s*\(/.test(runtimeSourceText)) errors.push("家庭内测版运行时代码不得发起媒体选择");
+if (!deploymentGuideText.includes("REGISTRATION_MODE=family_invite")) errors.push("部署文档缺少家庭邀请码注册模式");
+if (!deploymentGuideText.includes('"write": "false"')) errors.push("部署文档缺少云存储客户端禁写规则");
 
 if (errors.length) {
   for (const error of errors) console.error(error);

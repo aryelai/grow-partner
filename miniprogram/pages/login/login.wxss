@@ -10,3 +10,5 @@
 .nickname-input { margin: 36rpx 0 24rpx; text-align: center; }
 .register-button, .choice-button { margin-top: 24rpx; }
 .privacy-note, .pending-tip { margin-top: 22rpx; color: var(--text-light); text-align: center; font-size: 22rpx; line-height: 1.6; }
+.upload-disabled-tip { margin-top: 20rpx; color: var(--text-light); text-align: center; font-size: 24rpx; line-height: 1.6; }
+.invite-input { text-transform: uppercase; }

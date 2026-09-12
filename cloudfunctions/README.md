@@ -7,6 +7,17 @@
 3. 创建下列集合并将客户端直接读写设为拒绝，业务访问统一经过云函数：`users`、`families`、`family_join_requests`、`family_search_limits`、`homework`、`notices`、`habits`、`habit_checkins`、`habit_points`、`habit_rewards`、`plans`、`settings`、`subjects`、`message_subscriptions`、`reminder_deliveries`。其中后两个订阅提醒集合必须明确设置为客户端不可读、不可写。
 4. 逐个右键 `cloudfunctions` 下的函数目录，选择“上传并部署：云端安装依赖（不上传 node_modules）”。每个函数仅依赖官方 `wx-server-sdk@3.0.1`。
 5. 创建 `families.inviteCode` 唯一索引和“推荐索引”列出的复合索引；账号由云函数上下文中的 OpenID 识别，不采集手机号。
+6. 家庭内测版必须同时为 `login`、`family` 配置 `REGISTRATION_MODE=family_invite`。允许值只有 `open`、`family_invite`、`closed`；缺失或非法配置按 `closed` 处理。邀请码只由现有家庭创建者分享，不得把邀请码、家庭 ID 或 OpenID 写入代码或环境变量。
+7. 家庭内测版暂停新增附件。把云存储切换为自定义安全规则，在保持现有文件仅允许原上传者读取的同时禁止一切客户端写入：
+
+   ```json
+   {
+     "read": "auth != null && (resource.openid == auth.openid || resource.openid == auth.uid)",
+     "write": "false"
+   }
+   ```
+
+   CloudBase 控制台和云函数不受此客户端规则限制。保存后等待 1–3 分钟，并分别用已有文件和一次客户端上传拒绝结果核验规则生效。
 
 ## 云函数与 action
 
@@ -30,7 +41,7 @@
 
 - `families.inviteCode`：服务端生成的 8 位无歧义邀请码，仅向家庭创建者返回。
 - `family_join_requests`：`familyId`、`applicantOpenid`、`relation`、`status`、`createdAt`、`reviewedAt`、`reviewedBy`。该集合承载加入申请和审批。
-- `family_search_limits`：`openid`、`date`、`count`、`updatedAt`。邀请码查询按微信用户每天最多 20 次，降低家庭信息枚举风险。
+- `family_search_limits`：`openid`、`date`、`count`、`updatedAt`，注册校验记录另含 `purpose`。邀请码查询和注册邀请码校验分别按微信用户每天最多 20 次，使用不同的确定性文档 ID，降低家庭信息枚举风险。
 - `habits.semester`：保证切换学期后习惯按学期隔离。
 - `plans.semester`：保证日/周/月计划按学期隔离。
 - `plans.date`：三个计划类型都保存一个 ISO 日期锚点，列表据此计算日/周/月范围。
@@ -80,21 +91,24 @@ reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC
 - 作业、通知、计划和习惯响应不返回内部 `createdBy` 或 `checkedByOpenid`，页面只使用关系名称展示录入人与打卡人。
 - 邀请码使用排除易混淆字符的 8 位编码；查询响应只返回最小家庭信息，提交申请时再次校验邀请码与家庭是否匹配。
 - 邀请码只向家庭创建者展示，加入家庭仍需创建者批准。
+- `family_invite` 注册模式只允许持有现有家庭邀请码的新微信用户完成资料注册；响应不返回匹配家庭或邀请码信息，校验每天最多 20 次。注册成功后仍需再次输入邀请码并由家庭创建者批准。既有账号不受注册模式影响。
+- 只有显式 `open` 注册模式允许创建新家庭；家庭内测使用 `family_invite`，缺失或非法配置默认关闭新注册和新建家庭。
 - 习惯仅允许保存北京时间当天且处于启用周期内的打卡，同一日期的积分最多发放一次。
 - 普通成员即使获准修改提醒偏好，也不能改写仅创建者可管理的 AI 供应商、Base URL 和模型配置。
 - 通知与全局提醒对象只接受已定义的家庭关系枚举，未知值不会入库。
 - `message_subscriptions` 和 `reminder_deliveries` 必须设置为客户端不可读、不可写；订阅登记只能更新当前微信身份，不能接受客户端提供的 OpenID、`familyId` 或预计次数。
 - 待办模板 ID 可以作为受控常量保存；不得保存 AppSecret，也不得请求或发送本轮禁用的日程提醒模板。
 - `reminder.run` 只接受精确的微信定时触发来源 `SOURCE === "wx_trigger"`，不提供客户端测试发送入口。
-- 上传文件只保存 `cloud://` fileID，链接只允许 `http` 或 `https`。
-- 生产环境应配置云存储安全规则、内容安全检测、订阅消息模板和数据备份策略。
+- 家庭内测版的运行时代码不调用 `wx.chooseMedia` 或 `wx.cloud.uploadFile`，头像、作业、通知和习惯页面均不提供新增附件入口；历史 `cloud://` fileID 不删除。
+- 家庭内测版云存储规则必须保留原上传者读取并设置客户端 `write: false`；公开恢复上传前必须改为服务端授权上传并完成内容安全检测。
+- 生产环境应配置订阅消息模板和数据备份策略。
 
 ## 部署门禁
 
-- [ ] 云存储安全规则至少拒绝未认证访问，并经过创建者、普通成员和孩子三种账号的真机验证。
-- [ ] 创建者和普通成员可通过作业、通知页面完成允许的上传；孩子账号看不到维护入口，直接进入编辑页也不会触发 `wx.chooseMedia` 或 `wx.cloud.uploadFile`。
+- [ ] `login`、`family` 均配置 `REGISTRATION_MODE=family_invite`；无邀请码注册、错误邀请码、有效邀请码、既有账号和新建家庭拒绝均完成真机验证。
+- [ ] 云存储使用自定义安全规则，`read` 仅允许原上传者，`write` 为 `false`；规则生效后验证已有文件可读且客户端上传被拒绝。
+- [ ] 登录、作业、通知和习惯页面没有新增附件入口，运行时代码不包含 `wx.chooseMedia` 或 `wx.cloud.uploadFile`。
 - [ ] 云函数仍需拒绝孩子创建、更新和删除作业、通知与计划，客户端检查不得替代服务端授权。
-- [ ] 云存储规则无法直接读取 `users.role`。若验收要求阻止恶意孩子客户端绕过页面直接上传，当前架构不得上线，必须先改为服务端授权上传方案。
 
 ## 订阅提醒开发环境部署记录（2026-09-11）
 

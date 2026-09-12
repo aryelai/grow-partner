@@ -1,14 +1,9 @@
-const { callFunction, showError, uploadFile } = require("../../utils/api");
+const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { DEFAULT_SUBJECTS, CURRENT_SEMESTER } = require("../../utils/constants");
 const { formatDate } = require("../../utils/date");
 const { validateUrl } = require("../../utils/validation");
 const { canPerform } = require("../../utils/permissions");
-
-function fileExtension(path) {
-  const matched = /\.([a-z0-9]+)(?:\?|$)/i.exec(path);
-  return matched ? matched[1].toLowerCase() : "dat";
-}
 
 Page({
   data: {
@@ -19,7 +14,6 @@ Page({
     deadlineTime: "20:00",
     linkInput: "",
     tagInput: "",
-    uploading: false,
     submitting: false,
   },
 
@@ -89,27 +83,6 @@ Page({
   },
   removeTag(event) { const tags = [...this.data.form.extraTags]; tags.splice(event.currentTarget.dataset.index, 1); this.setData({ "form.extraTags": tags }); },
 
-  async chooseMedia() {
-    if (!await this.refreshPermission()) { this.setData({ uploading: false }); return; }
-    try {
-      const remainingImages = 9 - this.data.form.images.length;
-      const result = await wx.chooseMedia({ count: Math.min(9, remainingImages + (this.data.form.videos.length ? 0 : 1)), mediaType: ["image", "video"], sizeType: ["compressed"] });
-      const session = await this.refreshPermission();
-      if (!session) return;
-      const imageFiles = result.tempFiles.filter((item) => item.fileType === "image").slice(0, remainingImages);
-      const videoFiles = this.data.form.videos.length ? [] : result.tempFiles.filter((item) => item.fileType === "video").slice(0, 1);
-      if (imageFiles.some((item) => item.size > 10 * 1024 * 1024) || videoFiles.some((item) => item.size > 100 * 1024 * 1024)) {
-        wx.showToast({ title: "图片需小于10MB，视频需小于100MB", icon: "none" }); return;
-      }
-      this.setData({ uploading: true });
-      const timestamp = Date.now();
-      const images = await Promise.all(imageFiles.map((item, index) => uploadFile(`homework/${session.user.familyId}/${timestamp}-image-${index}.${fileExtension(item.tempFilePath)}`, item.tempFilePath)));
-      const videos = await Promise.all(videoFiles.map((item, index) => uploadFile(`homework/${session.user.familyId}/${timestamp}-video-${index}.${fileExtension(item.tempFilePath)}`, item.tempFilePath)));
-      this.setData({ "form.images": [...this.data.form.images, ...images], "form.videos": [...this.data.form.videos, ...videos] });
-    } catch (error) {
-      if (!String(error.errMsg || error.message).includes("cancel")) showError(error, "附件上传失败");
-    } finally { this.setData({ uploading: false }); }
-  },
   removeMedia(event) { const type = event.currentTarget.dataset.type; const values = [...this.data.form[type]]; values.splice(event.currentTarget.dataset.index, 1); this.setData({ [`form.${type}`]: values }); },
 
   async save() {

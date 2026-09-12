@@ -22,8 +22,4 @@ function showError(error, fallback = "操作失败，请稍后重试") {
   });
 }
 
-function uploadFile(cloudPath, filePath) {
-  return wx.cloud.uploadFile({ cloudPath, filePath }).then((result) => result.fileID);
-}
-
-module.exports = { callFunction, showError, uploadFile };
+module.exports = { callFunction, showError };
