@@ -4,7 +4,7 @@ const vm = require("node:vm");
 
 const projectRoot = path.resolve(__dirname, "..");
 const errors = [];
-const expectedPageCount = 16;
+const expectedPageCount = 17;
 const expectedCloudFunctionCount = 9;
 const todoTemplateId = "5Iy1Jv7aswWNmrRMDXgrcj2BKeywdH6evDst6OomB2c";
 const mistypedTodoTemplateId = "5ly1Jv7aswWNmrRMDXgrcj2BKeywdH6evDst6OomB2c";
@@ -42,6 +42,7 @@ for (const file of [...files.filter((item) => item.endsWith(".json")), path.join
 const appConfig = JSON.parse(fs.readFileSync(path.join(projectRoot, "miniprogram/app.json"), "utf8"));
 if (appConfig.pages.length !== expectedPageCount) errors.push(`页面数量应为${expectedPageCount}个`);
 if (!appConfig.pages.includes("pages/notice-detail/notice-detail")) errors.push("通知详情页未在 app.json 注册");
+if (!appConfig.pages.includes("pages/homework-import/homework-import")) errors.push("AI 作业导入页未在 app.json 注册");
 if (new Set(appConfig.pages).size !== appConfig.pages.length) errors.push("app.json 存在重复页面配置");
 for (const pagePath of appConfig.pages) {
   for (const extension of ["js", "json", "wxml", "wxss"]) {
@@ -99,8 +100,12 @@ for (const entry of cloudFunctionEntries) {
     continue;
   }
   const packageConfig = JSON.parse(fs.readFileSync(packageFile, "utf8"));
-  if (packageConfig.dependencies?.["wx-server-sdk"] !== "3.0.1") {
+  const expectedSdkVersion = entry.name === "ai" ? "4.0.2" : "3.0.1";
+  if (packageConfig.dependencies?.["wx-server-sdk"] !== expectedSdkVersion) {
     errors.push(`云函数 SDK 版本不一致：${entry.name}`);
+  }
+  if (entry.name === "ai" && packageConfig.dependencies?.["@cloudbase/node-sdk"] !== "3.17.2") {
+    errors.push("AI 云函数缺少固定版本的 CloudBase Node SDK");
   }
 }
 
@@ -142,9 +147,19 @@ if (/\bsk-[A-Za-z0-9_-]{16,}\b/.test(sourceText)) errors.push("检测到疑似�
 if (/apiKey\s*[:=]\s*["'][^"']{8,}["']/.test(sourceText)) errors.push("检测到疑似硬编码 aiApiKey");
 if (/["']?(?:appSecret|app_secret|APP_SECRET)["']?\s*[:=]\s*["'][^"']{8,}["']/i.test(sourceText)) errors.push("检测到疑似硬编码 AppSecret");
 if (/wx\.cloud\.uploadFile\s*\(/.test(runtimeSourceText)) errors.push("家庭内测版运行时代码不得直接上传云存储文件");
-if (/wx\.chooseMedia\s*\(/.test(runtimeSourceText)) errors.push("家庭内测版运行时代码不得发起媒体选择");
+const mediaSelectionFiles = runtimeFiles.filter((item) => item.endsWith(".js") && /wx\.chooseMedia\s*\(/.test(fs.readFileSync(item, "utf8")));
+const allowedMediaSelectionFile = path.join(projectRoot, "miniprogram/pages/homework-import/homework-import.js");
+const mediaSelectionCallCount = fs.existsSync(allowedMediaSelectionFile)
+  ? (fs.readFileSync(allowedMediaSelectionFile, "utf8").match(/wx\.chooseMedia\s*\(/g) || []).length
+  : 0;
+if (mediaSelectionFiles.length !== 1 || mediaSelectionFiles[0] !== allowedMediaSelectionFile || mediaSelectionCallCount !== 1) {
+  errors.push("只有 AI 作业导入页可以发起媒体选择");
+}
 if (!deploymentGuideText.includes("REGISTRATION_MODE=family_invite")) errors.push("部署文档缺少家庭邀请码注册模式");
 if (!deploymentGuideText.includes('"write": "false"')) errors.push("部署文档缺少云存储客户端禁写规则");
+if (!deploymentGuideText.includes("ai_import_jobs") || !deploymentGuideText.includes("AI_MODEL") || !deploymentGuideText.includes("AI_DAILY_LIMIT")) {
+  errors.push("部署文档缺少 AI 作业导入配置");
+}
 
 if (errors.length) {
   for (const error of errors) console.error(error);

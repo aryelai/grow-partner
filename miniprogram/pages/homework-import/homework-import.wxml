@@ -1,0 +1,65 @@
+<view class="page import-page">
+  <view class="card intro-card">
+    <view class="section-title">从 QQ 作业截图生成草稿</view>
+    <view class="muted intro-text">一次选择 1–3 张清晰截图。AI 只生成可编辑草稿，核对并点击保存前不会写入作业。</view>
+    <view class="privacy-note">截图仅用于本次识别，正常识别或取消后立即删除；断网、崩溃等异常由云存储短期生命周期规则兜底删除。截图不会成为作业附件。</view>
+    <view wx:if="{{blockedReason}}" class="blocked-note">{{blockedReason}}</view>
+  </view>
+
+  <view class="card" wx:if="{{enabled}}">
+    <view class="row between">
+      <view>
+        <view class="section-title compact-title">选择截图</view>
+        <view class="muted">仅支持 JPEG、PNG，单张不超过 4 MB</view>
+      </view>
+      <button class="ghost-button select-button" disabled="{{processing || saving}}" bindtap="chooseScreenshots">{{selectedFiles.length ? '重新选择' : '选择截图'}}</button>
+    </view>
+    <view class="preview-grid" wx:if="{{selectedFiles.length}}">
+      <view class="preview-item" wx:for="{{selectedFiles}}" wx:key="tempFilePath">
+        <image src="{{item.tempFilePath}}" mode="aspectFill" />
+        <text>{{index + 1}}</text>
+      </view>
+    </view>
+    <button class="primary-button recognize-button" loading="{{processing}}" disabled="{{processing || saving || !selectedFiles.length}}" bindtap="recognize">开始识别</button>
+    <view class="progress-text" wx:if="{{progressText}}">{{progressText}}</view>
+  </view>
+
+  <view class="warning-card" wx:if="{{warnings.length}}">
+    <view class="warning-title">识别提示</view>
+    <view class="warning-item" wx:for="{{warnings}}" wx:key="*this">• {{item}}</view>
+  </view>
+
+  <view class="draft-card {{item.saved ? 'saved' : ''}}" wx:for="{{drafts}}" wx:for-index="draftIndex" wx:key="localId">
+    <view class="draft-header">
+      <view class="draft-check" data-index="{{draftIndex}}" bindtap="toggleDraft">
+        <checkbox color="#4A90D9" checked="{{item.selected}}" disabled="{{item.saved || saving}}" />
+        <text>作业 {{draftIndex + 1}}</text>
+      </view>
+      <text wx:if="{{item.saved}}" class="saved-badge">✓ 已保存</text>
+    </view>
+
+    <view class="field">
+      <text class="field-label">科目 *</text>
+      <scroll-view scroll-x="{{true}}" class="subject-scroll">
+        <view class="subject-row">
+          <view wx:for="{{subjects}}" wx:for-item="subjectItem" wx:key="*this" class="tag {{item.subject === subjectItem ? 'active' : ''}}" data-index="{{draftIndex}}" data-value="{{subjectItem}}" bindtap="selectSubject">{{subjectItem}}</view>
+        </view>
+      </scroll-view>
+      <view wx:if="{{!item.subject}}" class="field-warning">AI 未能匹配科目，请手动选择</view>
+    </view>
+    <view class="field"><text class="field-label">主题 *</text><input class="input" maxlength="50" disabled="{{item.saved || saving}}" value="{{item.title}}" data-index="{{draftIndex}}" data-field="title" bindinput="onDraftInput" /></view>
+    <view class="field"><text class="field-label">详细内容</text><textarea class="textarea" maxlength="2000" disabled="{{item.saved || saving}}" value="{{item.content}}" data-index="{{draftIndex}}" data-field="content" bindinput="onDraftInput" /></view>
+    <view class="field"><text class="field-label">附加要求</text><input class="input" maxlength="100" disabled="{{item.saved || saving}}" value="{{item.extraRequirement}}" data-index="{{draftIndex}}" data-field="extraRequirement" bindinput="onDraftInput" /></view>
+    <view class="deadline-switch"><text>设置截止时间</text><switch color="#4A90D9" checked="{{item.hasDeadline}}" disabled="{{item.saved || saving}}" data-index="{{draftIndex}}" bindchange="onDeadlineSwitch" /></view>
+    <view class="deadline-row" wx:if="{{item.hasDeadline}}">
+      <picker mode="date" value="{{item.deadlineDate}}" disabled="{{item.saved || saving}}" data-index="{{draftIndex}}" bindchange="onDeadlineDate"><view class="picker">{{item.deadlineDate}}</view></picker>
+      <picker mode="time" value="{{item.deadlineTime}}" disabled="{{item.saved || saving}}" data-index="{{draftIndex}}" bindchange="onDeadlineTime"><view class="picker">{{item.deadlineTime}}</view></picker>
+    </view>
+    <view wx:if="{{item.saveError}}" class="save-error">{{item.saveError}}</view>
+  </view>
+
+  <view class="save-panel" wx:if="{{drafts.length}}">
+    <view class="save-progress" wx:if="{{saveProgress}}">{{saveProgress}}</view>
+    <button class="primary-button" loading="{{saving}}" disabled="{{saving || processing}}" bindtap="saveSelected">保存选中作业</button>
+  </view>
+</view>

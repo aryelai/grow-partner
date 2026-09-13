@@ -121,12 +121,12 @@ test("运行时代码恢复客户端云存储上传会使项目静态校验失�
   }, (result) => assertValidationFailure(result, /家庭内测版运行时代码不得直接上传云存储文件/));
 });
 
-test("运行时代码恢复媒体选择会使项目静态校验失败", () => {
+test("非 AI 导入页发起媒体选择会使项目静态校验失败", () => {
   withProjectCopy((temporaryRoot) => {
     const clientPath = path.join(temporaryRoot, "miniprogram/pages/login/login.js");
     const source = fs.readFileSync(clientPath, "utf8");
     fs.writeFileSync(clientPath, `${source}\nfunction unsafeChooseMedia() { return wx.chooseMedia({}); }\n`);
-  }, (result) => assertValidationFailure(result, /家庭内测版运行时代码不得发起媒体选择/));
+  }, (result) => assertValidationFailure(result, /只有 AI 作业导入页可以发起媒体选择/));
 });
 
 for (const [requiredText, expectedError] of [
@@ -156,7 +156,43 @@ test("页面数量漂移会使项目静态校验失败", () => {
     const appConfig = JSON.parse(fs.readFileSync(appConfigPath, "utf8"));
     appConfig.pages.pop();
     fs.writeFileSync(appConfigPath, JSON.stringify(appConfig));
-  }, (result) => assertValidationFailure(result, /页面数量应为16个/));
+  }, (result) => assertValidationFailure(result, /页面数量应为17个/));
+});
+
+test("AI 作业导入页未注册会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const appConfigPath = path.join(temporaryRoot, "miniprogram/app.json");
+    const appConfig = JSON.parse(fs.readFileSync(appConfigPath, "utf8"));
+    const pageIndex = appConfig.pages.indexOf("pages/homework-import/homework-import");
+    appConfig.pages[pageIndex] = "pages/login/login";
+    fs.writeFileSync(appConfigPath, JSON.stringify(appConfig));
+  }, (result) => assertValidationFailure(result, /AI 作业导入页未在 app.json 注册/));
+});
+
+test("AI 云函数 SDK 版本漂移会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const packagePath = path.join(temporaryRoot, "cloudfunctions/ai/package.json");
+    const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+    packageConfig.dependencies["wx-server-sdk"] = "3.0.1";
+    fs.writeFileSync(packagePath, JSON.stringify(packageConfig));
+  }, (result) => assertValidationFailure(result, /云函数 SDK 版本不一致：ai/));
+});
+
+test("AI 云函数缺少固定 CloudBase Node SDK 会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const packagePath = path.join(temporaryRoot, "cloudfunctions/ai/package.json");
+    const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+    packageConfig.dependencies["@cloudbase/node-sdk"] = "^3.17.2";
+    fs.writeFileSync(packagePath, JSON.stringify(packageConfig));
+  }, (result) => assertValidationFailure(result, /AI 云函数缺少固定版本的 CloudBase Node SDK/));
+});
+
+test("AI 导入页重复发起媒体选择会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const pagePath = path.join(temporaryRoot, "miniprogram/pages/homework-import/homework-import.js");
+    const source = fs.readFileSync(pagePath, "utf8");
+    fs.writeFileSync(pagePath, `${source}\nfunction unsafeSecondChooser() { return wx.chooseMedia({}); }\n`);
+  }, (result) => assertValidationFailure(result, /只有 AI 作业导入页可以发起媒体选择/));
 });
 
 test("通知详情页未注册会使项目静态校验失败", () => {

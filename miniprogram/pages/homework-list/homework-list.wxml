@@ -40,5 +40,6 @@
     <view class="load-more" wx:if="{{loading}}">加载中…</view>
     <view class="load-more" wx:if="{{!loading && items.length && !hasMore}}">已加载全部</view>
   </view>
+  <button wx:if="{{canUseImport}}" class="ai-import-button {{canImport ? '' : 'unavailable'}}" bindtap="importHomework">AI 导入</button>
   <button wx:if="{{canManage}}" class="fab" bindtap="createHomework">＋</button>
 </view>

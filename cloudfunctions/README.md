@@ -4,8 +4,8 @@
 
 1. 在微信开发者工具中导入项目根目录，核对 `project.config.json` 的 `appid` 与当前要联调的小程序主体一致；AppID 不是密钥，但不得写入 AppSecret。
 2. 创建云开发环境。`cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })` 会让云函数使用其所在环境，不需要在代码中硬编码环境 ID。
-3. 创建下列集合并将客户端直接读写设为拒绝，业务访问统一经过云函数：`users`、`families`、`family_join_requests`、`family_search_limits`、`homework`、`notices`、`habits`、`habit_checkins`、`habit_points`、`habit_rewards`、`plans`、`settings`、`subjects`、`message_subscriptions`、`reminder_deliveries`。其中后两个订阅提醒集合必须明确设置为客户端不可读、不可写。
-4. 逐个右键 `cloudfunctions` 下的函数目录，选择“上传并部署：云端安装依赖（不上传 node_modules）”。每个函数仅依赖官方 `wx-server-sdk@3.0.1`。
+3. 创建下列集合并将客户端直接读写设为拒绝，业务访问统一经过云函数：`users`、`families`、`family_join_requests`、`family_search_limits`、`homework`、`notices`、`habits`、`habit_checkins`、`habit_points`、`habit_rewards`、`plans`、`settings`、`subjects`、`message_subscriptions`、`reminder_deliveries`、`ai_import_jobs`。订阅提醒集合与 `ai_import_jobs` 必须明确设置为客户端不可读、不可写。
+4. 逐个右键 `cloudfunctions` 下的函数目录，选择“上传并部署：云端安装依赖（不上传 node_modules）”。除 `ai` 外的函数继续使用官方 `wx-server-sdk@3.0.1`；`ai` 使用 `wx-server-sdk@4.0.2` 和官方 `@cloudbase/node-sdk@3.17.2`，以支持托管多模态模型和服务端上传元数据。
 5. 创建 `families.inviteCode` 唯一索引和“推荐索引”列出的复合索引；账号由云函数上下文中的 OpenID 识别，不采集手机号。
 6. 家庭内测版必须同时为 `login`、`family` 配置 `REGISTRATION_MODE=family_invite`。允许值只有 `open`、`family_invite`、`closed`；缺失或非法配置按 `closed` 处理。邀请码只由现有家庭创建者分享，不得把邀请码、家庭 ID 或 OpenID 写入代码或环境变量。
 7. 家庭内测版暂停新增附件。把云存储切换为自定义安全规则，在保持现有文件仅允许原上传者读取的同时禁止一切客户端写入：
@@ -30,7 +30,7 @@
 | `habit` | `list`、`get`、`create`、`update`、`checkIn`、`remove` |
 | `plan` | `list`、`get`、`create`、`update`、`toggleItem`、`remove` |
 | `settings` | `get`、`updatePreferences`、`changeSemester`、`updateFamily`、`getSubjects`、`addSubject`、`removeSubject` |
-| `ai` | `getStatus`，其余 action 在基础版明确返回未启用 |
+| `ai` | `getStatus`、`createImportJob`、`analyzeImportJob`、`cancelImportJob` |
 | `reminder` | 客户端可调用 `getStatus`、`recordSubscription`；`run` 仅接受 `SOURCE === "wx_trigger"` 的定时触发，不能由客户端 action 调用 |
 
 所有 action 返回 `{ success, data, message }`。客户端不得传 `openid` 或以传入的 `familyId` 作为授权依据；云函数统一从 `cloud.getWXContext()` 和 `users` 集合解析身份。
@@ -49,8 +49,23 @@
 - `habit_checkins.pointsAwarded`：记录该日期是否已发放积分，防止反复修改打卡状态导致重复计分；旧记录若 `status` 已为 `completed`，按已发放处理。
 - `message_subscriptions`：按当前 OpenID 和待办模板保存预计可用次数、最近订阅结果及受控请求编号；文档 ID 由服务端生成，客户端禁止直接读写。
 - `reminder_deliveries`：按通知、提醒版本、接收人和模板生成确定性发送记录，保存调度、占用、发送、失败或取消状态；客户端禁止直接读写。
+- `ai_import_jobs`：保存 AI 导入任务与北京时间每日限流文档。任务绑定服务端解析的 OpenID 和 `familyId`，只记录临时文件、状态、过期时间及清理结果，不保存识别正文；客户端禁止直接读写。
 
-AI Key 不在基础版中保存。`settings` 只保存供应商、Base URL、模型名和开关占位；正式 AI 集成应从云函数环境变量或密钥管理服务读取密钥，且不得返回客户端。
+AI 作业导入使用 CloudBase 托管模型，不保存或下发 API Key。模型名和每日任务上限只从 `ai` 云函数环境变量 `AI_MODEL`、`AI_DAILY_LIMIT` 读取；缺失或非法时功能按关闭处理，响应不得返回模型名、额度或服务端配置。`settings` 中既有供应商、Base URL 和模型名仍只作为旧版占位，不参与本功能。
+
+### AI 作业导入部署前配置（尚未执行）
+
+本节对应 `codex/ai-homework-import` 的后续部署步骤；当前正在审核的 `1.0.0` 和现有 `cloud1` 不执行以下变更。
+
+1. 在 CloudBase AI+ 模型管理中启用一个支持图片输入的托管模型，把控制台显示的精确模型 ID 配置为 `ai` 云函数的 `AI_MODEL`。不得把模型名写死在客户端或使用用户提供的 API Key。
+2. 为 `ai` 配置整数 `AI_DAILY_LIMIT`。该值限制每个微信身份按北京时间创建的导入任务数；未配置时入口保持关闭。
+3. 将 `ai` 云函数的宿主执行超时设置为至少 120 秒。SDK 的 60 秒请求超时不能替代宿主超时；开发环境必须用三张 4 MB 以内截图测量最慢完整路径，并在模型调用上限之外保留下载、校验和临时文件清理余量，再据实上调宿主超时。
+4. 创建 `ai_import_jobs` 集合并设置客户端不可读、不可写；集合不保存截图 OCR 正文或作业草稿。
+5. 保持云存储安全规则中的 `"write": "false"`。导入页不调用 `wx.cloud.uploadFile`，而是从 `ai.createImportJob` 获得服务端随机精确路径和短时上传元数据；客户端 PUT 必须同时按 `@cloudbase/node-sdk@3.17.2` 发送 `Signature`、`authorization`、`key`、`x-cos-security-token`、`x-cos-meta-fileid`，其中 `key` 只能使用服务端返回的 `uploadKey`；识别结束后由服务端删除文件。
+6. 将控制台核对过的当前 CloudBase 存储桶 HTTPS 上传地址加入小程序 `request` 合法域名，不使用通配符，也不关闭域名校验。
+7. 为 `ai-imports/` 前缀配置短期对象生命周期，作为小程序崩溃、断网、宿主硬超时或迟到上传导致即时删除未完成时的兜底；生命周期不能替代识别和取消接口的即时删除。
+8. 在再次提交小程序审核前更新“用户隐私保护指引”：按控制台实际枚举声明导入页会选择相册图片或调用相机，说明截图仅用于本次 AI 作业识别、不会保存为作业附件，并与临时文件删除策略保持一致。
+9. 部署后分别用创建者、普通成员和孩子账号验证允许、允许和拒绝，再验证过大文件、伪造任务 ID、重复分析、额度耗尽和临时文件清理。
 
 ## 推荐索引
 
@@ -99,8 +114,9 @@ reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC
 - `message_subscriptions` 和 `reminder_deliveries` 必须设置为客户端不可读、不可写；订阅登记只能更新当前微信身份，不能接受客户端提供的 OpenID、`familyId` 或预计次数。
 - 待办模板 ID 可以作为受控常量保存；不得保存 AppSecret，也不得请求或发送本轮禁用的日程提醒模板。
 - `reminder.run` 只接受精确的微信定时触发来源 `SOURCE === "wx_trigger"`，不提供客户端测试发送入口。
-- 家庭内测版的运行时代码不调用 `wx.chooseMedia` 或 `wx.cloud.uploadFile`，头像、作业、通知和习惯页面均不提供新增附件入口；历史 `cloud://` fileID 不删除。
+- 家庭内测版仍全局禁止 `wx.cloud.uploadFile`，头像、普通作业编辑、通知和习惯页面均不提供新增附件入口；仅 AI 作业导入页可调用 `wx.chooseMedia` 选择临时截图，且截图不会写入作业附件。历史 `cloud://` fileID 不删除。
 - 家庭内测版云存储规则必须保留原上传者读取并设置客户端 `write: false`；公开恢复上传前必须改为服务端授权上传并完成内容安全检测。
+- AI 作业导入只允许创建者和普通成员。云函数签发上传元数据和执行识别前都要校验身份、家庭、角色、任务所有权、文件数量、格式、大小、过期时间和每日额度；孩子账号不能使用。
 - 生产环境应配置订阅消息模板和数据备份策略。
 
 ## 部署门禁
@@ -109,7 +125,7 @@ reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC
 - [ ] 无邀请码注册、错误邀请码、有效邀请码、既有账号和新建家庭拒绝均完成真机验证。
 - [ ] 云存储使用自定义安全规则，`read` 仅允许原上传者，`write` 为 `false`；规则生效后验证已有文件可读且客户端上传被拒绝。
   - 2026-09-12 用户将原环境升级为个人版后，已重新保存自定义规则；控制台显示“权限变更完成”，重新打开编辑器核对内容与本文件一致。仍待用历史附件读取和一次客户端上传拒绝完成行为验证。
-- [ ] 登录、作业、通知和习惯页面没有新增附件入口，运行时代码不包含 `wx.chooseMedia` 或 `wx.cloud.uploadFile`。
+- [ ] 登录、普通作业编辑、通知和习惯页面没有新增附件入口，运行时代码不包含 `wx.cloud.uploadFile`；`wx.chooseMedia` 只允许出现在 AI 作业导入页。
 - [ ] 云函数仍需拒绝孩子创建、更新和删除作业、通知与计划，客户端检查不得替代服务端授权。
 
 ## 订阅提醒开发环境部署记录（2026-09-11）

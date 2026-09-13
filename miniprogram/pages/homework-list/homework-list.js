@@ -25,6 +25,9 @@ Page({
     hasMore: false,
     loading: true,
     canManage: false,
+    canUseImport: false,
+    canImport: false,
+    importBlockedReason: "",
   },
 
   async onShow() {
@@ -33,11 +36,11 @@ Page({
       session = await requireFamily();
     } catch (error) {
       this.currentUser = null;
-      this.setData({ canManage: false });
+      this.setData({ canManage: false, canUseImport: false, canImport: false, importBlockedReason: "" });
       showError(error, "身份校验失败，请稍后重试");
       return;
     }
-    if (!session) { this.currentUser = null; this.setData({ canManage: false }); return; }
+    if (!session) { this.currentUser = null; this.setData({ canManage: false, canUseImport: false, canImport: false, importBlockedReason: "" }); return; }
     this.currentUser = session.user;
     const family = session.family;
     let subjectList = DEFAULT_SUBJECTS[family.educationStage] || DEFAULT_SUBJECTS.junior_high;
@@ -47,12 +50,31 @@ Page({
     } catch (error) {
       console.error("Load custom subjects failed", { message: error.message });
     }
+    const canManage = canPerform(session.user.role, "createHomework");
+    const canUseImport = canPerform(session.user.role, "importHomework");
     this.setData({
       semester: family.currentSemester,
       subjects: ["全部", ...subjectList],
-      canManage: canPerform(session.user.role, "createHomework"),
+      canManage,
+      canUseImport,
+      canImport: false,
+      importBlockedReason: canUseImport ? "正在检查 AI 导入状态" : "",
     });
-    await this.load(true);
+    const homeworkLoad = this.load(true);
+    let canImport = false;
+    let importBlockedReason = "AI 作业导入暂不可用";
+    if (canUseImport) {
+      try {
+        const aiStatus = await callFunction("ai", "getStatus");
+        canImport = aiStatus.enabled === true && aiStatus.canImport === true;
+        importBlockedReason = canImport ? "" : aiStatus.blockedReason || importBlockedReason;
+      } catch (error) {
+        importBlockedReason = "AI 作业导入状态加载失败，请稍后重试";
+        console.error("Load AI import status failed", { message: error.message });
+      }
+    }
+    this.setData({ canImport, importBlockedReason });
+    await homeworkLoad;
   },
 
   onPullDownRefresh() {
@@ -107,6 +129,21 @@ Page({
   createHomework() {
     if (!canPerform(this.currentUser && this.currentUser.role, "createHomework")) { wx.showToast({ title: "孩子账号不能新增作业", icon: "none" }); return; }
     wx.navigateTo({ url: `/pages/homework-edit/homework-edit?semester=${this.data.semester}` });
+  },
+  importHomework() {
+    if (!canPerform(this.currentUser && this.currentUser.role, "importHomework")) {
+      wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
+      return;
+    }
+    if (!this.data.canImport) {
+      wx.showModal({
+        title: "AI 导入暂不可用",
+        content: this.data.importBlockedReason || "请稍后重试",
+        showCancel: false,
+      });
+      return;
+    }
+    wx.navigateTo({ url: `/pages/homework-import/homework-import?semester=${encodeURIComponent(this.data.semester)}` });
   },
   openDetail(event) { wx.navigateTo({ url: `/pages/homework-detail/homework-detail?id=${event.currentTarget.dataset.id}` }); },
   previewImage(event) { wx.previewImage({ current: event.currentTarget.dataset.url, urls: event.currentTarget.dataset.urls }); },

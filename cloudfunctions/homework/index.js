@@ -1,15 +1,36 @@
 const cloud = require("wx-server-sdk");
+const crypto = require("crypto");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db = cloud.database();
 const RELATION_NAMES = { father: "爸爸", mother: "妈妈", grandpa_paternal: "爷爷", grandma_paternal: "奶奶", grandpa_maternal: "外公", grandma_maternal: "外婆", uncle_paternal: "叔叔", aunt_paternal: "婶婶", uncle_maternal: "舅舅", aunt_maternal: "舅妈", brother: "哥哥", sister: "姐姐", child: "孩子" };
+const CREATE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 
 function success(data, message = "") { return { success: true, data, message }; }
 function failure(message) { return { success: false, data: null, message }; }
 function cleanText(value, maxLength) { return typeof value === "string" ? value.trim().slice(0, maxLength) : ""; }
 function cleanArray(value, maxLength) { return Array.isArray(value) ? value.slice(0, maxLength) : []; }
 function escapeRegExp(value) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+function documentMissing(error) {
+  return Boolean(error && (error.code === "DOCUMENT_NOT_FOUND"
+    || /document.*(?:does not exist|not found)/i.test(String(error.errMsg || error.message || ""))));
+}
+function parseCreateRequestId(event) {
+  if (!Object.hasOwn(event, "requestId") || event.requestId === undefined || event.requestId === "") {
+    return { requestId: "" };
+  }
+  if (typeof event.requestId !== "string" || event.requestId !== event.requestId.trim()
+    || !CREATE_REQUEST_ID_PATTERN.test(event.requestId)) {
+    return { error: "创建请求编号不正确" };
+  }
+  return { requestId: event.requestId };
+}
+function createHomeworkId(user, requestId) {
+  return crypto.createHash("sha256")
+    .update(["homework-create", user.familyId, user.openid, requestId].join("\u0000"))
+    .digest("hex");
+}
 function publicHomework(value) {
   const { createdBy, ...safeValue } = value;
   return safeValue;
@@ -119,15 +140,39 @@ async function create(user, event) {
   if (user.role === "child") return failure("孩子账号不能新增作业");
   const payload = validatePayload(event);
   if (payload.error) return failure(payload.error);
+  const request = parseCreateRequestId(event);
+  if (request.error) return failure(request.error);
+  const data = {
+    familyId: user.familyId,
+    ...payload.data,
+    isCompleted: false,
+    createdAt: new Date(),
+    createdBy: user.openid,
+    createdByName: RELATION_NAMES[user.relation] || user.nickname,
+  };
+  if (request.requestId) {
+    const id = createHomeworkId(user, request.requestId);
+    const result = await db.runTransaction(async (transaction) => {
+      const reference = transaction.collection("homework").doc(id);
+      let existing = null;
+      try {
+        existing = (await reference.get()).data;
+      } catch (error) {
+        if (!documentMissing(error)) throw error;
+      }
+      if (existing) {
+        if (existing.familyId !== user.familyId || existing.createdBy !== user.openid) {
+          throw new Error("IDEMPOTENCY_CONFLICT");
+        }
+        return { id, created: false };
+      }
+      await reference.set({ data });
+      return { id, created: true };
+    });
+    return success({ id: result.id, created: result.created }, result.created ? "作业已保存" : "作业已存在");
+  }
   const result = await db.collection("homework").add({
-    data: {
-      familyId: user.familyId,
-      ...payload.data,
-      isCompleted: false,
-      createdAt: new Date(),
-      createdBy: user.openid,
-      createdByName: RELATION_NAMES[user.relation] || user.nickname,
-    },
+    data,
   });
   return success({ id: result._id }, "作业已保存");
 }

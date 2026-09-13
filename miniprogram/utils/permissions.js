@@ -1,6 +1,7 @@
 const CREATOR_ACTIONS = new Set([
   "view",
   "createHomework",
+  "importHomework",
   "updateHomework",
   "deleteHomework",
   "requestDeleteHomework",
@@ -19,6 +20,7 @@ const CREATOR_ACTIONS = new Set([
 const MEMBER_ACTIONS = new Set([
   "view",
   "createHomework",
+  "importHomework",
   "updateHomework",
   "requestDeleteHomework",
   "toggleHomework",

@@ -61,6 +61,7 @@ function loadPage(relativePath, overrides = {}) {
   const callFunction = async (...args) => {
     callFunctionCalls.push(args);
     if (args[0] === "settings") return { subjects: ["语文"] };
+    if (args[0] === "ai" && args[1] === "getStatus") return { enabled: false, canImport: false, blockedReason: "AI 作业导入尚未配置" };
     if (args[0] === "homework") return { items: [], hasMore: false };
     if (args[0] === "notice") return { items: [], hasMore: false };
     if (args[0] === "plan") return { items: [] };
