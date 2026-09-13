@@ -1,6 +1,7 @@
 const cloud = require("wx-server-sdk");
 const cloudbase = require("@cloudbase/node-sdk");
 const crypto = require("node:crypto");
+const { createModelGateway } = require("./model-client");
 const {
   MAX_IMAGES,
   MAX_IMAGE_BYTES,
@@ -101,6 +102,7 @@ function modelOutputTruncated(response, maxTokens) {
 
 function createAiService(dependencies) {
   const { database: db, cloudbaseApp: app, environment, now, randomBytes, logger } = dependencies;
+  const modelGateway = dependencies.modelGateway || createModelGateway({ cloudbaseApp: app });
 
   function requireOpenid(openid) {
     if (typeof openid !== "string" || !openid) throw new Error("UNAUTHORIZED");
@@ -293,9 +295,7 @@ function createAiService(dependencies) {
       subjects: context.subjects,
       importScope: validateImportScope(job.importScope),
     });
-    const model = app.ai().createModel("cloudbase");
-    const response = await model.generateText({
-      model: configuration.model,
+    const response = await modelGateway.generate(configuration, {
       max_tokens: MAX_MODEL_TOKENS,
       messages: [{ role: "user", content: [...imageParts, { type: "text", text: prompt }] }],
     });
@@ -436,6 +436,11 @@ const ERROR_MESSAGES = {
   INVALID_MODEL_JSON: "AI 识别结果格式异常，请重新尝试",
   INVALID_MODEL_STRUCTURE: "AI 识别结果格式异常，请重新尝试",
   NO_VALID_DRAFTS: "没有识别到可用作业，请更换清晰截图",
+  MODEL_AUTHENTICATION_FAILED: "AI 服务配置异常，请联系管理员",
+  MODEL_RATE_LIMITED: "AI 服务繁忙或额度不足，请稍后重试",
+  MODEL_REQUEST_FAILED: "AI 识别服务暂时不可用，请稍后重试",
+  MODEL_RESPONSE_TOO_LARGE: "AI 识别结果过大，请减少截图后重试",
+  MODEL_TIMEOUT: "AI 识别超时，请减少截图后重试",
 };
 
 function publicErrorMessage(error) {

@@ -6,6 +6,8 @@ const MAX_SUBJECTS = 50;
 const MAX_DRAFTS = 60;
 const MAX_MODEL_OUTPUT_BYTES = 100 * 1024;
 const MODEL_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+const TOKENHUB_MODELS = new Set(["qwen3.5-flash", "glm-5.3-flash"]);
+const TOKENHUB_API_KEY_PATTERN = /^[\x21-\x7e]{20,512}$/;
 const IMPORT_SCOPES = new Set([
   "auto",
   "monday",
@@ -49,18 +51,28 @@ function cleanText(value, maxLength) {
 }
 
 function parseAiConfiguration(environment = {}) {
+  const providerValue = cleanText(environment.AI_PROVIDER, 20).toLowerCase();
+  const provider = providerValue || "cloudbase";
   const model = cleanText(environment.AI_MODEL, 100);
   const rawLimit = typeof environment.AI_DAILY_LIMIT === "string"
     ? environment.AI_DAILY_LIMIT.trim()
     : "";
   const dailyLimit = /^\d+$/.test(rawLimit) ? Number(rawLimit) : 0;
-  const enabled = MODEL_NAME_PATTERN.test(model)
+  const commonValid = MODEL_NAME_PATTERN.test(model)
     && Number.isSafeInteger(dailyLimit)
     && dailyLimit >= 1
     && dailyLimit <= 1000;
-  return enabled
-    ? { enabled: true, model, dailyLimit }
-    : { enabled: false, model: "", dailyLimit: 0 };
+  if (provider === "cloudbase" && commonValid) {
+    return { enabled: true, provider, model, dailyLimit };
+  }
+  const apiKey = typeof environment.TOKENHUB_API_KEY === "string"
+    ? environment.TOKENHUB_API_KEY.trim()
+    : "";
+  if (provider === "tokenhub" && commonValid && TOKENHUB_MODELS.has(model)
+    && TOKENHUB_API_KEY_PATTERN.test(apiKey)) {
+    return { enabled: true, provider, model, dailyLimit, apiKey };
+  }
+  return { enabled: false, provider: "", model: "", dailyLimit: 0 };
 }
 
 function validateImportFiles(value) {

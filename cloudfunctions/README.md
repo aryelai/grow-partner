@@ -51,22 +51,24 @@
 - `reminder_deliveries`：按通知、提醒版本、接收人和模板生成确定性发送记录，保存调度、占用、发送、失败或取消状态；客户端禁止直接读写。
 - `ai_import_jobs`：保存 AI 导入任务与北京时间每日限流文档。任务绑定服务端解析的 OpenID、`familyId` 和白名单 `importScope`，只记录临时文件、状态、过期时间及清理结果，不保存识别正文；客户端禁止直接读写。旧任务缺失 `importScope` 时按 `auto` 兼容，分析接口不得接受客户端改写范围。
 
-AI 作业导入使用 CloudBase 托管模型，不保存或下发 API Key。模型名和每日任务上限只从 `ai` 云函数环境变量 `AI_MODEL`、`AI_DAILY_LIMIT` 读取；缺失或非法时功能按关闭处理，响应不得返回模型名、额度或服务端配置。`settings` 中既有供应商、Base URL 和模型名仍只作为旧版占位，不参与本功能。
+AI 作业导入支持 `tokenhub` 和 `cloudbase` 两个服务端供应商，生产推荐使用 TokenHub 的 `qwen3.5-flash`，`cloudbase` 仅保留为回滚通道。供应商、模型名和每日任务上限只从 `ai` 云函数环境变量 `AI_PROVIDER`、`AI_MODEL`、`AI_DAILY_LIMIT` 读取；TokenHub 还必须配置 `TOKENHUB_API_KEY`。任一必要配置缺失或非法时功能按关闭处理，响应不得返回供应商、模型名、额度、密钥或其他服务端配置。`settings` 中既有供应商、Base URL 和模型名仍只作为旧版占位，不参与本功能。
 
 ### AI 作业导入部署前配置（尚未执行）
 
-本节对应 `codex/ai-homework-import` 的后续部署步骤；当前正在审核的 `1.0.0` 和现有 `cloud1` 不执行以下变更。
+本节对应 `codex/ai-homework-import` 的后续部署步骤；没有完成真实样本评测、密钥配置和隐私更新前，不把 AI 导入开放给正式用户。
 
-1. 在 CloudBase AI+ 模型管理中启用一个支持图片输入的托管模型，把控制台显示的精确模型 ID 配置为 `ai` 云函数的 `AI_MODEL`。不得把模型名写死在客户端或使用用户提供的 API Key。
-2. 为 `ai` 配置整数 `AI_DAILY_LIMIT`。该值限制每个微信身份按北京时间创建的导入任务数；未配置时入口保持关闭。
-3. 将 `ai` 云函数的宿主执行超时设置为至少 120 秒。SDK 的 60 秒请求超时不能替代宿主超时；开发环境必须用三张 4 MB 以内截图测量最慢完整路径，并在模型调用上限之外保留下载、校验和临时文件清理余量，再据实上调宿主超时。
-4. 创建 `ai_import_jobs` 集合并设置客户端不可读、不可写；集合不保存截图 OCR 正文或作业草稿。
-5. 保持云存储安全规则中的 `"write": "false"`。导入页不调用 `wx.cloud.uploadFile`，而是从 `ai.createImportJob` 获得服务端随机精确路径和短时上传元数据；客户端 PUT 必须同时按 `@cloudbase/node-sdk@3.17.2` 发送 `Signature`、`authorization`、`key`、`x-cos-security-token`、`x-cos-meta-fileid`，其中 `key` 只能使用服务端返回的 `uploadKey`；识别结束后由服务端删除文件。
-6. 将控制台核对过的当前 CloudBase 存储桶 HTTPS 上传地址加入小程序 `request` 合法域名，不使用通配符，也不关闭域名校验。
-7. 为 `ai-imports/` 前缀配置短期对象生命周期，作为小程序崩溃、断网、宿主硬超时或迟到上传导致即时删除未完成时的兜底；生命周期不能替代识别和取消接口的即时删除。
-8. 在再次提交小程序审核前更新“用户隐私保护指引”：按控制台实际枚举声明导入页会选择相册图片或调用相机，说明截图仅用于本次 AI 作业识别、不会保存为作业附件，并与临时文件删除策略保持一致。
-9. 部署后分别用创建者、普通成员和孩子账号验证允许、允许和拒绝，再验证过大文件、伪造任务 ID、重复分析、额度耗尽和临时文件清理。
-10. `ai` 使用 `homework.list` 的 `created_at_desc` 白名单模式单次读取当前学期最近 50 条，部署前必须创建 `homework: familyId ASC, semester ASC, createdAt DESC` 复合索引；该模式不改变普通作业列表的业务排序。
+1. 在 TokenHub 启用 `qwen3.5-flash`，为生产环境单独创建 API Key。访问范围只勾选该模型，按 40–60 张脱敏真实样本测得的 token 用量设置月度上限；不要把 Key 发送到聊天、写入代码、数据库、客户端配置或日志。云函数没有固定出口 IP 时不要误设 IP 白名单。
+2. 在 `ai` 云函数环境变量中配置 `AI_PROVIDER=tokenhub`、`AI_MODEL=qwen3.5-flash`、整数 `AI_DAILY_LIMIT` 和 `TOKENHUB_API_KEY`。TokenHub 接口固定为官方 `https://tokenhub.tencentmaas.com/v1/chat/completions`，不允许通过环境变量改写，避免形成 SSRF 配置入口。
+3. `AI_DAILY_LIMIT` 限制每个微信身份按北京时间创建的导入任务数；未配置时入口保持关闭。TokenHub API Key 的月度 token 上限是账户侧成本硬门禁，两者需同时配置。
+4. 将 `ai` 云函数的宿主执行超时设置为至少 120 秒。TokenHub 单次请求有 60 秒绝对超时；开发环境必须用三张 4 MB 以内截图测量最慢完整路径，并为下载、校验和临时文件清理保留余量，再据实调整宿主超时。
+5. 创建 `ai_import_jobs` 集合并设置客户端不可读、不可写；集合不保存截图 OCR 正文或作业草稿。
+6. 保持云存储安全规则中的 `"write": "false"`。导入页不调用 `wx.cloud.uploadFile`，而是从 `ai.createImportJob` 获得服务端随机精确路径和短时上传元数据；客户端 PUT 必须同时按 `@cloudbase/node-sdk@3.17.2` 发送 `Signature`、`authorization`、`key`、`x-cos-security-token`、`x-cos-meta-fileid`，其中 `key` 只能使用服务端返回的 `uploadKey`；识别结束后由服务端删除文件。
+7. 将控制台核对过的当前 CloudBase 存储桶 HTTPS 上传地址加入小程序 `request` 合法域名，不使用通配符，也不关闭域名校验。TokenHub 请求由云函数发起，不属于小程序客户端合法域名配置。
+8. 为 `ai-imports/` 前缀配置短期对象生命周期，作为小程序崩溃、断网、宿主硬超时或迟到上传导致即时删除未完成时的兜底；生命周期不能替代识别和取消接口的即时删除。
+9. 在再次提交小程序审核前更新“用户隐私保护指引”：按控制台实际枚举声明导入页会选择相册图片或调用相机，截图会先临时存放于微信云开发，再发送给腾讯云 TokenHub 及所调用模型服务，仅用于本次作业识别，不保存为作业附件；同时说明临时文件删除策略、处理目的和用户可在保存前修改或取消。
+10. 使用 40–60 张脱敏真实作业截图，对 `qwen3.5-flash`、`glm-5.3-flash` 和账户内免费高精度 OCR 做同批盲测。以整条作业完全正确率、漏识别率、臆造率、星期列错误率、截止时间错误率、人工修改次数、P95 时延和实付费用为指标；没有数据前不启用 OCR 自动改写。
+11. 部署后分别用创建者、普通成员和孩子账号验证允许、允许和拒绝，再验证过大文件、伪造任务 ID、重复分析、额度耗尽、上游 401/429/超时和临时文件清理。
+12. `ai` 使用 `homework.list` 的 `created_at_desc` 白名单模式单次读取当前学期最近 50 条，部署前必须创建 `homework: familyId ASC, semester ASC, createdAt DESC` 复合索引；该模式不改变普通作业列表的业务排序。
 
 ## 推荐索引
 

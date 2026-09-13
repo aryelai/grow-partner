@@ -33,6 +33,7 @@ function loadAiModule(options = {}) {
       };
       if (request === "node:crypto") return require("node:crypto");
       if (request === "./core") return require("../cloudfunctions/ai/core");
+      if (request === "./model-client") return require("../cloudfunctions/ai/model-client");
       throw new Error(`测试未实现依赖：${request}`);
     },
   });
@@ -196,6 +197,18 @@ test("公开状态不泄露模型、额度和身份配置", async () => {
   const serialized = JSON.stringify(await fixture.service.getStatus(testUser.openid));
   assert.equal(serialized.includes("glm"), false);
   assert.equal(serialized.includes(testUser.openid), false);
+
+  const tokenHubKey = ["test", "tokenhub", "key", "1234567890"].join("-");
+  const tokenHubFixture = createFixture({ environment: {
+    AI_PROVIDER: "tokenhub",
+    AI_MODEL: "qwen3.5-flash",
+    AI_DAILY_LIMIT: "2",
+    TOKENHUB_API_KEY: tokenHubKey,
+  } });
+  const tokenHubStatus = JSON.stringify(await tokenHubFixture.service.getStatus(testUser.openid));
+  assert.equal(tokenHubStatus.includes("tokenhub"), false);
+  assert.equal(tokenHubStatus.includes("qwen"), false);
+  assert.equal(tokenHubStatus.includes(tokenHubKey), false);
 });
 
 test("无身份、未注册用户和孩子账号均不能创建导入任务", async () => {
