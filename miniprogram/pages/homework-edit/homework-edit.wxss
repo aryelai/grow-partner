@@ -1,8 +1,8 @@
 .subject-scroll { white-space: nowrap; }
-.subject-row { display: inline-flex; }
+.subject-row { display: inline-flex; padding-bottom: 8rpx; }
 .fixed { color: var(--text-light); background: #F8F9FB; }
-.switch-row { display: flex; align-items: center; justify-content: space-between; padding: 22rpx 0; border-top: 2rpx solid var(--border); }
-.deadline-row { display: flex; margin-top: 14rpx; }.deadline-row picker { flex: 1; }.deadline-row picker + picker { margin-left: 16rpx; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; min-height: 88rpx; padding: 8rpx 0; border-top: 2rpx solid var(--border); box-sizing: border-box; }
+.deadline-row { display: flex; gap: 16rpx; margin-top: 18rpx; }.deadline-row picker { flex: 1; min-width: 0; }
 .media-grid { display: flex; flex-wrap: wrap; gap: 14rpx; }
 .media-item, .media-add { position: relative; width: 150rpx; height: 150rpx; padding: 0; border-radius: 12rpx; overflow: hidden; background: #EEF2F6; }
 .media-item image { width: 100%; height: 100%; }
@@ -10,9 +10,10 @@
 .media-add { color: var(--text-light); font-size: 23rpx; line-height: 150rpx; }
 .remove { position: absolute; top: 4rpx; right: 4rpx; width: 38rpx; height: 38rpx; border-radius: 50%; color: #fff; background: rgba(0, 0, 0, 0.58); text-align: center; line-height: 34rpx; }
 .link-row { display: flex; align-items: center; gap: 12rpx; margin: 18rpx 0; }
-.link-row .input { flex: 1; }
+.link-row .input { flex: 1; min-width: 0; }
+.compact-button { display: flex; align-items: center; justify-content: center; flex: 0 0 112rpx; width: 112rpx; height: 88rpx; padding: 0; border-radius: 14rpx; color: var(--primary); background: var(--primary-light); font-size: 25rpx; font-weight: 600; line-height: 1; }
 .list-item { display: flex; justify-content: space-between; padding: 12rpx 0; }
 .link-text { max-width: 560rpx; overflow: hidden; color: var(--primary); text-overflow: ellipsis; white-space: nowrap; }
 .remove-text { color: var(--danger); }
-.removable { margin-bottom: 12rpx; }
+.removable { margin-bottom: 0; }
 .save-button { margin-bottom: 60rpx; }

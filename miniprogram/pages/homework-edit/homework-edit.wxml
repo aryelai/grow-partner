@@ -24,14 +24,14 @@
       <view class="media-item video" wx:for="{{form.videos}}" wx:key="*this">视频<text class="remove" data-type="videos" data-index="{{index}}" bindtap="removeMedia">×</text></view>
     </view>
     <view class="muted">家庭内测期间暂不支持新增附件，已有附件仍可查看。</view>
-    <view class="link-row"><input class="input" value="{{linkInput}}" bindinput="onLinkInput" placeholder="https:// 开头的链接" /><button size="mini" bindtap="addLink">添加</button></view>
+    <view class="link-row"><input class="input" value="{{linkInput}}" bindinput="onLinkInput" placeholder="https:// 开头的链接" /><button class="compact-button" size="mini" bindtap="addLink">添加</button></view>
     <view class="list-item" wx:for="{{form.links}}" wx:key="*this"><text class="link-text">{{item}}</text><text class="remove-text" data-index="{{index}}" bindtap="removeLink">删除</text></view>
   </view>
 
   <view class="card">
     <view class="section-title">额外标签</view>
-    <view class="link-row"><input class="input" maxlength="10" value="{{tagInput}}" bindinput="onTagInput" bindconfirm="addTag" confirm-type="done" placeholder="输入后点添加，最多10个" /><button size="mini" bindtap="addTag">添加</button></view>
-    <view><text class="tag removable" wx:for="{{form.extraTags}}" wx:key="*this" data-index="{{index}}" bindtap="removeTag">{{item}} ×</text></view>
+    <view class="link-row"><input class="input" maxlength="10" value="{{tagInput}}" bindinput="onTagInput" bindconfirm="addTag" confirm-type="done" placeholder="输入后点添加，最多10个" /><button class="compact-button" size="mini" bindtap="addTag">添加</button></view>
+    <view class="tag-group"><text class="tag removable" wx:for="{{form.extraTags}}" wx:key="*this" data-index="{{index}}" bindtap="removeTag">{{item}} ×</text></view>
   </view>
 
   <button class="primary-button save-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="save">保存作业</button>
