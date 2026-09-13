@@ -3,6 +3,7 @@ const { requireFamily } = require("../../utils/session");
 const { PLAN_TYPES, PRIORITIES } = require("../../utils/constants");
 const { formatDate } = require("../../utils/date");
 const { canPerform } = require("../../utils/permissions");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const assignees = [{ value: "child", label: "孩子" }, { value: "father", label: "爸爸" }, { value: "mother", label: "妈妈" }, { value: "all", label: "全家" }];
 
@@ -11,6 +12,9 @@ function decorateItems(items) {
 }
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: { id: "", types: PLAN_TYPES, priorityLabels: PRIORITIES.map((item) => item.label), assigneeLabels: assignees.map((item) => item.label), assigneeIndex: 0, form: { type: "daily", date: formatDate(new Date()), semester: "2026下", title: "", items: decorateItems([{ text: "", isDone: false, priority: "medium" }]), assignee: "child", notes: "", linkedHomeworkIds: [], linkedHabitIds: [] }, submitting: false },
   async refreshPermission() { let session; try { session = await requireFamily(); } catch (error) { this.currentUser = null; showError(error, "身份校验失败，请稍后重试"); return null; } if (!session) { this.currentUser = null; return null; } this.currentUser = session.user; if (!canPerform(session.user.role, "managePlan")) { wx.showToast({ title: "孩子账号不能新增或编辑计划", icon: "none" }); return null; } return session; },
   async onLoad(options) { const session = await this.refreshPermission(); if (!session) { if (this.currentUser) wx.navigateBack(); return; } this.setData({ id: options.id || "", "form.type": options.type || "daily", "form.date": options.date || formatDate(new Date()), "form.semester": session.family.currentSemester }); if (options.id) await this.load(options.id); },

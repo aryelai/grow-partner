@@ -1,10 +1,14 @@
 const { callFunction, showError } = require("../../utils/api");
 const { RELATIONS } = require("../../utils/constants");
 const { isValidInviteCode, normalizeInviteCode } = require("../../utils/invite-code");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const relationEntries = Object.entries(RELATIONS);
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: {
     inviteCode: "",
     family: null,

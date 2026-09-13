@@ -337,6 +337,7 @@ function loadImportPage(overrides = {}) {
       }
       if (request === "../../utils/permissions") return { canPerform };
       if (request === "../../utils/constants") return { DEFAULT_SUBJECTS: { junior_high: ["语文", "数学"] } };
+      if (request === "../../utils/share") return require("../miniprogram/utils/share");
       throw new Error(`测试未实现依赖：${request}`);
     },
   });

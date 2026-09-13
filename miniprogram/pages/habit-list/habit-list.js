@@ -2,10 +2,14 @@ const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { HABIT_CATEGORIES } = require("../../utils/constants");
 const { formatDate } = require("../../utils/date");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const categoryIcons = { behavior: "行", life: "生", study: "学" };
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: { categories: HABIT_CATEGORIES, selectedCategory: "behavior", semester: "2026下", items: [], loading: true },
   async onShow() { const session = await requireFamily(); if (!session) return; this.currentUser = session.user; this.setData({ semester: session.family.currentSemester }); await this.load(); },
   onPullDownRefresh() { this.load().finally(() => wx.stopPullDownRefresh()); },

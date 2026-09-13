@@ -3,6 +3,7 @@ const { requireFamily } = require("../../utils/session");
 const { PLAN_TYPES } = require("../../utils/constants");
 const { formatDate, getDateRangeForPlan } = require("../../utils/date");
 const { canPerform } = require("../../utils/permissions");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 function shiftAnchor(value, type, offset) {
   const [year, month, day] = value.split("-").map(Number);
@@ -20,6 +21,9 @@ function labelRange(type, range) {
 }
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: { types: PLAN_TYPES, type: "daily", anchorDate: formatDate(new Date()), rangeLabel: "", semester: "2026下", items: [], completionRate: 0, loading: true, canManage: false },
   async onShow() {
     let session;

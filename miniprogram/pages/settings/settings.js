@@ -4,6 +4,7 @@ const { EDUCATION_STAGES } = require("../../utils/constants");
 const { getAdjacentSemester, formatDate } = require("../../utils/date");
 const { formatInviteCode } = require("../../utils/invite-code");
 const { requestReminderSubscription } = require("../../utils/subscription");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const providers = [{ value: "deepseek", label: "DeepSeek" }, { value: "openai", label: "OpenAI" }, { value: "claude", label: "Claude" }, { value: "custom", label: "自定义" }];
 const SENSITIVE_ERROR_VALUE_PATTERN = /((?:^|[{\s,?&;])(?:["'])?(?:access[_-]?token|refresh[_-]?token|token|api[_-]?key|client[_-]?secret|password|cookie|openid|secret|key)(?:["'])?\s*[:=]\s*)(?:"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s,;}&]+)/gi;
@@ -53,6 +54,9 @@ function createDisplayError(context) {
 }
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: { family: null, settings: {}, stageName: "", birthdayText: "", inviteCodeText: "", isCreator: false, canEditSettings: false, providerLabels: providers.map((item) => item.label), providerIndex: 0, advanceDay: true, advanceHours: false, targetFather: true, targetMother: true, targetChild: false, reminderStatus: null, reminderStatusText: "", reminderStatusDetail: "", loadingReminderStatus: false, subscribing: false, saving: false },
   async onShow() { const session = await requireFamily(); if (!session) return; await this.load(); },
   async load() {

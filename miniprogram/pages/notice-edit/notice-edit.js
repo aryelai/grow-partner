@@ -4,6 +4,7 @@ const { NOTICE_CATEGORIES, RELATIONS } = require("../../utils/constants");
 const { formatDate } = require("../../utils/date");
 const { canPerform } = require("../../utils/permissions");
 const { requestReminderSubscription, shouldRequestSubscription } = require("../../utils/subscription");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const VALID_ADVANCES = new Set([120, 1440]);
 const REMINDER_RELATIONS = Object.entries(RELATIONS).map(([value, label]) => ({ value, label }));
@@ -78,6 +79,9 @@ function createFormSnapshot(form) {
 }
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: {
     id: "", categories: NOTICE_CATEGORIES, reminderRelations: createReminderRelations([]),
     form: { semester: "2026下", title: "", source: "", category: "other", content: "", images: [], remindAdvance: [120], remindTargets: [] },

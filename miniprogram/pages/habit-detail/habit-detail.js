@@ -1,6 +1,7 @@
 const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { formatDate } = require("../../utils/date");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 function currentMonth() { return formatDate(new Date()).slice(0, 7); }
 function shiftMonth(value, offset) { const [year, month] = value.split("-").map(Number); const date = new Date(year, month - 1 + offset, 1); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`; }
@@ -20,6 +21,9 @@ function buildCalendar(month, checkIns, today) {
 }
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: { id: "", habit: null, month: currentMonth(), weekdays: ["一", "二", "三", "四", "五", "六", "日"], leadingBlanks: [], calendarDays: [], todayItems: [], today: formatDate(new Date()), note: "", photo: "", streak: 0, totalPoints: 0, canManage: false, submitting: false },
   async onLoad(options) { const session = await requireFamily(); if (!session) return; this.familyId = session.user.familyId; this.setData({ id: options.id || "", canManage: session.user.role !== "child" }); await this.load(); },
   async load() {

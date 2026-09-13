@@ -3,10 +3,14 @@ const { requireFamily } = require("../../utils/session");
 const { NOTICE_CATEGORIES } = require("../../utils/constants");
 const { formatDateTime } = require("../../utils/date");
 const { canPerform } = require("../../utils/permissions");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const categories = [{ value: "all", label: "全部" }, ...NOTICE_CATEGORIES];
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: { categories, category: "all", keyword: "", semester: "2026下", items: [], page: 1, hasMore: false, loading: true, canManage: false },
   async onShow() {
     let session;

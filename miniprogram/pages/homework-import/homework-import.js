@@ -10,6 +10,7 @@ const {
   createHomeworkPayload,
   checkPossibleDuplicates,
 } = require("../../utils/ai-import");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const IMPORT_SCOPE_OPTIONS = [
   { value: "auto", label: "智能判断" },
@@ -22,6 +23,9 @@ const IMPORT_SCOPE_OPTIONS = [
 ];
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: {
     semester: "",
     subjects: [],
