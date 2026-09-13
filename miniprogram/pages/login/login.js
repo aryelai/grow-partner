@@ -1,5 +1,6 @@
 const { callFunction, showError } = require("../../utils/api");
 const { isValidInviteCode, normalizeInviteCode } = require("../../utils/invite-code");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const REGISTRATION_MODES = new Set(["open", "family_invite", "closed"]);
 
@@ -8,6 +9,9 @@ function normalizeRegistrationMode(value) {
 }
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: {
     loading: true,
     submitting: false,

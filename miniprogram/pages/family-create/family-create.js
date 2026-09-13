@@ -1,6 +1,7 @@
 const { callFunction, showError } = require("../../utils/api");
 const { EDUCATION_STAGES, GRADES, RELATIONS, CURRENT_SEMESTER } = require("../../utils/constants");
 const { formatDate } = require("../../utils/date");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 function showInviteCode(inviteCodeDisplay, inviteCode) {
   return new Promise((resolve) => {
@@ -24,6 +25,9 @@ function showInviteCode(inviteCodeDisplay, inviteCode) {
 const relationEntries = Object.entries(RELATIONS).filter(([value]) => !["brother", "sister", "child"].includes(value));
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: {
     form: { childName: "", childNickname: "", childBirthday: "", className: "" },
     today: formatDate(new Date()),

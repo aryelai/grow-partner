@@ -1,7 +1,11 @@
 const { callFunction, showError } = require("../../utils/api");
 const { formatDateTime } = require("../../utils/date");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: { members: [], requests: [], isCreator: false },
 
   onShow() { this.load(); },

@@ -1,7 +1,11 @@
 const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: { subjects: [], defaultSubjects: [], subjectItems: [], input: "" },
   async onLoad() { const session = await requireFamily(); if (!session) return; await this.load(); },
   applySubjects(data) { const defaults = new Set(data.defaultSubjects); this.setData({ ...data, subjectItems: data.subjects.map((name) => ({ name, isDefault: defaults.has(name) })) }); },

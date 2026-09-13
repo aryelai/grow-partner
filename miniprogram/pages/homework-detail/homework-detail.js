@@ -3,8 +3,12 @@ const { requireFamily } = require("../../utils/session");
 const { formatDateTime } = require("../../utils/date");
 const { RELATIONS } = require("../../utils/constants");
 const { canPerform } = require("../../utils/permissions");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: { id: "", item: null, canEdit: false },
   onLoad(options) { this.setData({ id: options.id || "" }); },
   async refreshCurrentUser() {

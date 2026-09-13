@@ -3,6 +3,7 @@ const { requireFamily } = require("../../utils/session");
 const { NOTICE_CATEGORIES, RELATIONS } = require("../../utils/constants");
 const { formatDateTime } = require("../../utils/date");
 const { canPerform } = require("../../utils/permissions");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const NOTICE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const VALID_ADVANCES = new Set([120, 1440]);
@@ -30,6 +31,9 @@ function getAdvanceText(value) {
 }
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: { id: "", item: null, canEdit: false },
   async onLoad(options) {
     const id = options && options.id;

@@ -4,8 +4,12 @@ const { DEFAULT_SUBJECTS, CURRENT_SEMESTER } = require("../../utils/constants");
 const { formatDate } = require("../../utils/date");
 const { validateUrl } = require("../../utils/validation");
 const { canPerform } = require("../../utils/permissions");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: {
     id: "",
     form: { semester: CURRENT_SEMESTER, subject: "", title: "", content: "", images: [], videos: [], links: [], extraRequirement: "", isImportant: false, hasDeadline: false, extraTags: [] },

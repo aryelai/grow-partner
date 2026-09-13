@@ -4,6 +4,7 @@ const { DEFAULT_SUBJECTS } = require("../../utils/constants");
 const { getAdjacentSemester, formatDateTime } = require("../../utils/date");
 const { sortHomework } = require("../../utils/homework");
 const { canPerform } = require("../../utils/permissions");
+const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const RELATION_NAMES = {
   father: "爸爸", mother: "妈妈", grandpa_paternal: "爷爷", grandma_paternal: "奶奶",
@@ -13,6 +14,9 @@ const RELATION_NAMES = {
 };
 
 Page({
+  onShareAppMessage: createShareAppMessage,
+  onShareTimeline: createShareTimelineMessage,
+
   data: {
     semester: "2026下",
     subjects: ["全部"],

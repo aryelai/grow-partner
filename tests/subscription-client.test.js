@@ -61,6 +61,7 @@ function loadSettingsPage(overrides = {}) {
       if (request === "../../utils/date") return { getAdjacentSemester: () => "2026秋", formatDate: (value) => value };
       if (request === "../../utils/invite-code") return { formatInviteCode: (value) => value };
       if (request === "../../utils/subscription") return subscription;
+      if (request === "../../utils/share") return require("../miniprogram/utils/share");
       throw new Error(`测试未实现依赖：${request}`);
     },
   });
@@ -133,6 +134,7 @@ function createNoticePage(sourceName, overrides = {}) {
       if (request === "../../utils/date") return { formatDate: () => "2026-09-10", formatDateTime: (value) => `时间：${value}` };
       if (request === "../../utils/permissions") return { canPerform: (role, action) => role !== "child" && action === "manageNotice" };
       if (request === "../../utils/subscription") return subscription;
+      if (request === "../../utils/share") return require("../miniprogram/utils/share");
       throw new Error(`测试未实现依赖：${request}`);
     },
   });
