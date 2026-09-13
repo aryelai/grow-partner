@@ -37,7 +37,8 @@ projectResources:
   agents: []
   commands: []
   docs: []
-  skills: []
+  skills:
+    - miniprogram-ui-review
   status: configured
 protectedAreas:
   entries:

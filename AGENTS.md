@@ -1,7 +1,7 @@
 <!-- devres:start -->
 # 项目 Agent 规则
 
-> 由 devres 根据 `fullstack` 配置为 `agents-compatible` 的 `project` 作用域生成。请不要手动修改本区块。
+> 由 devres 根据 `wechat-miniprogram` 配置为 `agents-compatible` 的 `project` 作用域生成。请不要手动修改本区块。
 
 ## 当前项目事实
 
@@ -57,7 +57,7 @@
 
 ## 项目专属资源
 
-- 当前未声明项目专属共享资源。
+- Skills：miniprogram-ui-review
 
 ## 语言规范
 
