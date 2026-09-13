@@ -7,6 +7,17 @@
   </view>
 
   <view class="card" wx:if="{{enabled}}">
+    <view class="scope-section">
+      <view class="section-title compact-title">识别范围</view>
+      <view class="muted scope-help">智能判断：周表取最新一列，单日图取全部；也可手动指定周表星期或整周。</view>
+      <view class="muted scope-help">重复提示仅检查当前学期最近 50 条已有作业，最终仍请人工确认。</view>
+      <radio-group class="scope-options" bindchange="changeImportScope">
+        <label class="scope-option {{importScope === item.value ? 'active' : ''}}" wx:for="{{importScopes}}" wx:key="value">
+          <radio value="{{item.value}}" checked="{{importScope === item.value}}" disabled="{{processing || saving || drafts.length}}" color="#4A90D9" />
+          <text>{{item.label}}</text>
+        </label>
+      </radio-group>
+    </view>
     <view class="row between">
       <view>
         <view class="section-title compact-title">选择截图</view>
@@ -29,7 +40,13 @@
     <view class="warning-item" wx:for="{{warnings}}" wx:key="*this">• {{item}}</view>
   </view>
 
-  <view class="draft-card {{item.saved ? 'saved' : ''}}" wx:for="{{drafts}}" wx:for-index="draftIndex" wx:key="localId">
+  <view class="card summary-card" wx:if="{{summary}}">
+    <view class="summary-item"><text>识别版式</text><text>{{summary.sourceTypeLabel}}</text></view>
+    <view class="summary-item"><text>识别范围</text><text>{{summary.scopeLabel}}</text></view>
+    <view class="summary-item" wx:if="{{summary.weekLabel}}"><text>周次</text><text>{{summary.weekLabel}}</text></view>
+  </view>
+
+  <view class="draft-card {{item.saved ? 'saved' : ''}} {{item.possibleDuplicate ? 'possible-duplicate' : ''}}" wx:for="{{drafts}}" wx:for-index="draftIndex" wx:key="localId">
     <view class="draft-header">
       <view class="draft-check" data-index="{{draftIndex}}" bindtap="toggleDraft">
         <checkbox color="#4A90D9" checked="{{item.selected}}" disabled="{{item.saved || saving}}" />
@@ -37,8 +54,10 @@
       </view>
       <text wx:if="{{item.saved}}" class="saved-badge">✓ 已保存</text>
     </view>
+    <view wx:if="{{item.possibleDuplicate}}" class="duplicate-note">可能与当前学期已有作业重复，已默认取消勾选；确认不是重复项后可重新勾选。</view>
+    <view wx:if="{{item.uncertainFields.length}}" class="uncertain-note">黄色字段字迹或含义不确定，请人工核对。</view>
 
-    <view class="field">
+    <view class="field {{item.subjectUncertain ? 'uncertain-field' : ''}}">
       <text class="field-label">科目 *</text>
       <scroll-view scroll-x="{{true}}" class="subject-scroll">
         <view class="subject-row">
@@ -47,10 +66,10 @@
       </scroll-view>
       <view wx:if="{{!item.subject}}" class="field-warning">AI 未能匹配科目，请手动选择</view>
     </view>
-    <view class="field"><text class="field-label">主题 *</text><input class="input" maxlength="50" disabled="{{item.saved || saving}}" value="{{item.title}}" data-index="{{draftIndex}}" data-field="title" bindinput="onDraftInput" /></view>
-    <view class="field"><text class="field-label">详细内容</text><textarea class="textarea" maxlength="2000" disabled="{{item.saved || saving}}" value="{{item.content}}" data-index="{{draftIndex}}" data-field="content" bindinput="onDraftInput" /></view>
-    <view class="field"><text class="field-label">附加要求</text><input class="input" maxlength="100" disabled="{{item.saved || saving}}" value="{{item.extraRequirement}}" data-index="{{draftIndex}}" data-field="extraRequirement" bindinput="onDraftInput" /></view>
-    <view class="deadline-switch"><text>设置截止时间</text><switch color="#4A90D9" checked="{{item.hasDeadline}}" disabled="{{item.saved || saving}}" data-index="{{draftIndex}}" bindchange="onDeadlineSwitch" /></view>
+    <view class="field {{item.titleUncertain ? 'uncertain-field' : ''}}"><text class="field-label">主题 *</text><input class="input" maxlength="50" disabled="{{item.saved || saving}}" value="{{item.title}}" data-index="{{draftIndex}}" data-field="title" bindinput="onDraftInput" /></view>
+    <view class="field {{item.contentUncertain ? 'uncertain-field' : ''}}"><text class="field-label">详细内容</text><textarea class="textarea" maxlength="2000" disabled="{{item.saved || saving}}" value="{{item.content}}" data-index="{{draftIndex}}" data-field="content" bindinput="onDraftInput" /></view>
+    <view class="field {{item.extraRequirementUncertain ? 'uncertain-field' : ''}}"><text class="field-label">附加要求</text><input class="input" maxlength="100" disabled="{{item.saved || saving}}" value="{{item.extraRequirement}}" data-index="{{draftIndex}}" data-field="extraRequirement" bindinput="onDraftInput" /></view>
+    <view class="deadline-switch {{item.deadlineUncertain ? 'uncertain-field' : ''}}"><text>设置截止时间</text><switch color="#4A90D9" checked="{{item.hasDeadline}}" disabled="{{item.saved || saving}}" data-index="{{draftIndex}}" bindchange="onDeadlineSwitch" /></view>
     <view class="deadline-row" wx:if="{{item.hasDeadline}}">
       <picker mode="date" value="{{item.deadlineDate}}" disabled="{{item.saved || saving}}" data-index="{{draftIndex}}" bindchange="onDeadlineDate"><view class="picker">{{item.deadlineDate}}</view></picker>
       <picker mode="time" value="{{item.deadlineTime}}" disabled="{{item.saved || saving}}" data-index="{{draftIndex}}" bindchange="onDeadlineTime"><view class="picker">{{item.deadlineTime}}</view></picker>

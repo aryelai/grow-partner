@@ -6,7 +6,7 @@ const vm = require("node:vm");
 
 function loadHomeworkFunction(options = {}) {
   const sourcePath = path.resolve(__dirname, "../cloudfunctions/homework/index.js");
-  let documents = new Map();
+  let documents = new Map((options.homework || []).map((item) => [item._id, structuredClone(item)]));
   let transactionQueue = Promise.resolve();
   let transactionAttempts = 0;
   let replayNextTransaction = options.replayFirstTransaction === true;
@@ -53,6 +53,28 @@ function loadHomeworkFunction(options = {}) {
           storage.set(id, structuredClone(data));
           return { _id: id };
         },
+        where(query) {
+          let items = [...storage.entries()]
+            .map(([id, value]) => ({ _id: id, ...structuredClone(value) }))
+            .filter((item) => Object.entries(query).every(([key, value]) => item[key] === value));
+          let offset = 0;
+          let limitValue = items.length;
+          const chain = {
+            async count() { return { total: items.length }; },
+            orderBy(field, direction) {
+              items = [...items].sort((left, right) => {
+                const leftValue = new Date(left[field]).getTime();
+                const rightValue = new Date(right[field]).getTime();
+                return direction === "desc" ? rightValue - leftValue : leftValue - rightValue;
+              });
+              return chain;
+            },
+            skip(value) { offset = value; return chain; },
+            limit(value) { limitValue = value; return chain; },
+            async get() { return { data: items.slice(offset, offset + limitValue) }; },
+          };
+          return chain;
+        },
       };
     }
     throw new Error(`测试未实现集合：${name}`);
@@ -60,6 +82,7 @@ function loadHomeworkFunction(options = {}) {
 
   const database = {
     collection(name) { return collection(name, documents); },
+    RegExp({ regexp, options: flags }) { return new RegExp(regexp, flags); },
     async runTransaction(callback) {
       const result = transactionQueue.then(async () => {
         if (replayNextTransaction) {
@@ -171,4 +194,45 @@ test("事务冲突重放回调后不会残留丢弃尝试的创建结果", async
   assert.equal(fixture.getTransactionAttempts(), 2);
   assert.equal(fixture.getDocuments().size, 1);
   assert.equal(fixture.getDocuments().has(result.data.id), true);
+});
+
+test("最近创建排序会包含最新已完成作业且拒绝未知排序模式", async () => {
+  const oldItems = Array.from({ length: 50 }, (_, index) => ({
+    _id: `old-${index}`,
+    familyId: "family-id",
+    semester: "2026下",
+    subject: "数学",
+    title: `旧作业 ${index}`,
+    isCompleted: false,
+    createdAt: new Date(`2026-09-${String((index % 9) + 1).padStart(2, "0")}T08:00:00.000Z`),
+    createdBy: "openid-id",
+  }));
+  const latest = {
+    _id: "latest-completed",
+    familyId: "family-id",
+    semester: "2026下",
+    subject: "语文",
+    title: "最新已完成作业",
+    isCompleted: true,
+    createdAt: new Date("2026-09-13T08:00:00.000Z"),
+    createdBy: "openid-id",
+  };
+  const fixture = loadHomeworkFunction({ homework: [...oldItems, latest] });
+
+  const result = await fixture.main({
+    action: "list",
+    semester: "2026下",
+    page: 1,
+    pageSize: 50,
+    sortMode: "created_at_desc",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.items.length, 50);
+  assert.equal(result.data.items[0]._id, "latest-completed");
+  assert.equal(result.data.items[0].createdBy, undefined);
+
+  const invalid = await fixture.main({ action: "list", sortMode: "deadline_desc" });
+  assert.equal(invalid.success, false);
+  assert.equal(invalid.message, "排序方式不正确");
 });

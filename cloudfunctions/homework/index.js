@@ -101,6 +101,8 @@ function sortItems(items) {
 async function list(user, event) {
   const page = Math.max(1, Number.parseInt(event.page, 10) || 1);
   const pageSize = Math.min(50, Math.max(1, Number.parseInt(event.pageSize, 10) || 20));
+  const sortMode = cleanText(event.sortMode, 32);
+  if (sortMode && sortMode !== "created_at_desc") return failure("排序方式不正确");
   const query = { familyId: user.familyId };
   const semester = cleanText(event.semester, 8);
   if (semester) query.semester = semester;
@@ -113,6 +115,18 @@ async function list(user, event) {
 
   const collection = db.collection("homework").where(query);
   const countResult = await collection.count();
+  if (sortMode === "created_at_desc") {
+    const start = (page - 1) * pageSize;
+    const result = await collection.orderBy("createdAt", "desc").skip(start).limit(pageSize).get();
+    return success({
+      items: result.data.map(publicHomework),
+      page,
+      pageSize,
+      total: countResult.total,
+      hasMore: page * pageSize < countResult.total,
+      truncated: false,
+    });
+  }
   const candidateLimit = Math.min(countResult.total, 500);
   const candidates = [];
   for (let offset = 0; offset < candidateLimit; offset += 50) {

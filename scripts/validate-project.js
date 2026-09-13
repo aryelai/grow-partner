@@ -132,6 +132,7 @@ const deploymentGuideText = fs.readFileSync(path.join(cloudRoot, "README.md"), "
 for (const [indexDescription, errorMessage] of [
   ["users:                  familyId ASC, role ASC", "家庭成员物化查询索引缺失"],
   ["users:                  familyId ASC, openid ASC", "提醒接收人复核查询索引缺失"],
+  ["homework:               familyId ASC, semester ASC, createdAt DESC", "AI 重复检查最近作业索引缺失"],
   ["reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC", "待提醒状态查询索引缺失"],
 ]) {
   if (!deploymentGuideText.includes(indexDescription)) errors.push(errorMessage);

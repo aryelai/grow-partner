@@ -9,6 +9,7 @@ const {
   validateImageBuffer,
   getBeijingDate,
   normalizeSubjects,
+  validateImportScope,
   extractModelPayload,
   normalizeModelDrafts,
   buildRecognitionPrompt,
@@ -20,6 +21,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const database = cloud.database();
 const cloudbaseApp = cloudbase.init({ env: cloudbase.SYMBOL_CURRENT_ENV, timeout: 60000 });
 const JOB_TTL_MS = 10 * 60 * 1000;
+const MAX_MODEL_TOKENS = 4000;
 const JOB_ID_PATTERN = /^[a-f0-9]{32}$/;
 const SAFE_CLEANUP_ERROR_CODES = new Set([
   "ETIMEDOUT",
@@ -57,6 +59,44 @@ function getModelText(result) {
     && result.choices[0].message && result.choices[0].message.content;
   if (typeof content === "string") return content;
   throw new Error("INVALID_MODEL_OUTPUT");
+}
+
+function inspectModelMetadata(value, state, depth = 0) {
+  if (!value || typeof value !== "object" || depth > 5 || state.visited.has(value)) return;
+  state.visited.add(value);
+  if (typeof value.finish_reason === "string") state.reasons.push(value.finish_reason);
+  if (typeof value.finishReason === "string") state.reasons.push(value.finishReason);
+  const usage = value.usage;
+  if (usage && typeof usage === "object") {
+    const completionTokens = Number(usage.completion_tokens ?? usage.completionTokens);
+    if (Number.isFinite(completionTokens)) state.completionTokens.push(completionTokens);
+  }
+  for (const key of ["choices", "rawResponses", "rawResponse", "data"]) {
+    const child = value[key];
+    if (Array.isArray(child)) {
+      for (const item of child) inspectModelMetadata(item, state, depth + 1);
+    } else {
+      inspectModelMetadata(child, state, depth + 1);
+    }
+  }
+}
+
+function modelOutputTruncated(response, maxTokens) {
+  const state = { reasons: [], completionTokens: [], visited: new WeakSet() };
+  inspectModelMetadata(response, state);
+  const reasons = state.reasons.map((value) => value.trim().toLowerCase());
+  const truncated = reasons.some((reason) => [
+    "length",
+    "max_tokens",
+    "max_token",
+    "token_limit",
+    "max_output_tokens",
+    "continue",
+    "incomplete",
+  ].includes(reason));
+  if (truncated) return true;
+  const normallyFinished = reasons.some((reason) => ["stop", "end_turn", "completed", "complete"].includes(reason));
+  return !normallyFinished && state.completionTokens.some((count) => count >= maxTokens);
 }
 
 function createAiService(dependencies) {
@@ -111,7 +151,7 @@ function createAiService(dependencies) {
     return { index, cloudPath, fileId: "", mimeType: file.mimeType, size: file.size, extension: file.extension };
   }
 
-  async function reserveJob(user, configuration, files) {
+  async function reserveJob(user, configuration, files, importScope) {
     const timestamp = now();
     const date = getBeijingDate(timestamp);
     const ownerHash = getOwnerHash(user.openid);
@@ -130,7 +170,8 @@ function createAiService(dependencies) {
       } });
       await transaction.collection("ai_import_jobs").doc(jobId).set({ data: {
         type: "job", jobId, ownerHash, familyId: user.familyId, status: "preparing",
-        files: jobFiles, expiresAt, cleanupRequired: false, createdAt: timestamp, updatedAt: timestamp,
+        importScope, files: jobFiles, expiresAt, cleanupRequired: false,
+        createdAt: timestamp, updatedAt: timestamp,
       } });
     });
     return { jobId, expiresAt, files: jobFiles };
@@ -160,7 +201,8 @@ function createAiService(dependencies) {
     const user = await requireImporter(openid);
     const configuration = requireConfiguration();
     const files = validateImportFiles(input.files);
-    const job = await reserveJob(user, configuration, files);
+    const importScope = validateImportScope(input.importScope);
+    const job = await reserveJob(user, configuration, files, importScope);
     try {
       const uploads = [];
       for (const file of job.files) {
@@ -249,14 +291,19 @@ function createAiService(dependencies) {
       date: getBeijingDate(now()),
       semester: context.semester,
       subjects: context.subjects,
+      importScope: validateImportScope(job.importScope),
     });
     const model = app.ai().createModel("cloudbase");
     const response = await model.generateText({
       model: configuration.model,
-      max_tokens: 4000,
+      max_tokens: MAX_MODEL_TOKENS,
       messages: [{ role: "user", content: [...imageParts, { type: "text", text: prompt }] }],
     });
-    return normalizeModelDrafts(extractModelPayload(getModelText(response)), context);
+    if (modelOutputTruncated(response, MAX_MODEL_TOKENS)) throw new Error("MODEL_OUTPUT_TRUNCATED");
+    return normalizeModelDrafts(extractModelPayload(getModelText(response)), {
+      ...context,
+      importScope: validateImportScope(job.importScope),
+    });
   }
 
   function getCleanupErrorCode(error) {
@@ -373,6 +420,7 @@ const ERROR_MESSAGES = {
   INVALID_FILE_TYPE: "仅支持 JPEG 或 PNG 截图",
   INVALID_FILE_SIZE: "单张截图不能超过 4 MB",
   INVALID_FILE_NAME: "截图文件名不正确",
+  INVALID_IMPORT_SCOPE: "识别范围不正确，请重新选择",
   INVALID_JOB_ID: "导入任务编号不正确",
   JOB_FORBIDDEN: "导入任务不存在或无权访问",
   JOB_STATE: "导入任务已处理，请重新发起导入",
@@ -384,6 +432,7 @@ const ERROR_MESSAGES = {
   IMAGE_SIZE_MISMATCH: "临时截图大小不一致，请重新导入",
   INVALID_MODEL_OUTPUT: "AI 识别结果格式异常，请重新尝试",
   MODEL_OUTPUT_TOO_LARGE: "AI 识别结果格式异常，请重新尝试",
+  MODEL_OUTPUT_TRUNCATED: "识别内容较多，请选择具体星期分批识别",
   INVALID_MODEL_JSON: "AI 识别结果格式异常，请重新尝试",
   INVALID_MODEL_STRUCTURE: "AI 识别结果格式异常，请重新尝试",
   NO_VALID_DRAFTS: "没有识别到可用作业，请更换清晰截图",

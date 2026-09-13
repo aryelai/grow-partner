@@ -135,10 +135,17 @@ function createFixture(options = {}) {
         return { async generateText(input) {
           if (options.modelError) throw options.modelError;
           if (options.onGenerate) options.onGenerate(input);
-          return { text: options.modelText || JSON.stringify({ drafts: [{
+          if (options.modelResponse) return structuredClone(options.modelResponse);
+          return { text: options.modelText || JSON.stringify({
+            sourceType: "daily_list",
+            detectedScope: "",
+            weekLabel: "",
+            truncated: false,
+            drafts: [{
             subject: "数学", title: "完成练习", content: "第 1 页", extraRequirement: "订正错题",
-            deadlineExplicit: true, deadline: "2026-09-14T20:00:00+08:00",
-          }] }) };
+            deadlineExplicit: true, deadline: "2026-09-14T20:00:00+08:00", uncertainFields: [],
+          }],
+          }) };
         } };
       } };
     },
@@ -217,6 +224,7 @@ test("任务绑定服务端身份家庭与随机路径且不保存原始 OpenID 
   const fixture = createFixture();
   const result = await fixture.service.createImportJob(testUser.openid, {
     files: fileInput(),
+    importScope: "friday_weekend",
     openid: "forged-openid",
     familyId: "forged-family",
   });
@@ -243,12 +251,39 @@ test("任务绑定服务端身份家庭与随机路径且不保存原始 OpenID 
   });
   const job = fixture.getJobs()[0];
   assert.equal(job.familyId, testUser.familyId);
+  assert.equal(job.importScope, "friday_weekend");
   assert.equal(job.openid, undefined);
   assert.equal(job.ownerHash.length, 64);
   assert.equal(JSON.stringify(job).includes("temporary-token"), false);
   assert.equal(JSON.stringify(job).includes("temporary-signature"), false);
   assert.equal(job.status, "awaiting_upload");
   assert.equal(fixture.getRateLimits()[0].openid, undefined);
+});
+
+test("创建任务拒绝非法识别范围且分析阶段只使用任务绑定范围", async () => {
+  const fixture = createFixture();
+  for (const importScope of ["sunday", null, "", 1]) {
+    await assert.rejects(fixture.service.createImportJob(testUser.openid, {
+      files: fileInput(),
+      importScope,
+    }), { message: "INVALID_IMPORT_SCOPE" });
+  }
+  assert.equal(fixture.getJobs().length, 0);
+
+  let prompt = "";
+  const boundFixture = createFixture({ onGenerate: (input) => {
+    prompt = input.messages[0].content.find((item) => item.type === "text").text;
+  } });
+  const created = await boundFixture.service.createImportJob(testUser.openid, {
+    files: fileInput(),
+    importScope: "tuesday",
+  });
+  await boundFixture.service.analyzeImportJob(testUser.openid, {
+    jobId: created.jobId,
+    importScope: "full_week",
+  });
+  assert.match(prompt, /周表只提取“星期二”列/);
+  assert.doesNotMatch(prompt, /周表所有非空星期列/);
 });
 
 test("上传元数据只接受 Node SDK 的 data 嵌套结构", async () => {
@@ -378,6 +413,8 @@ test("成功识别时校验图片、调用托管模型、规范化草稿并删�
   assert.equal(result.drafts[0].subject, "数学");
   assert.equal(result.drafts[0].hasDeadline, true);
   assert.equal(result.drafts[0].deadline, "2026-09-14T12:00:00.000Z");
+  assert.equal(result.summary.sourceType, "daily_list");
+  assert.equal(result.summary.scopeLabel, "全部作业");
   assert.equal(result.warnings.length, 0);
   assert.equal(modelInput.model, "glm-5v-turbo");
   assert.equal(modelInput.max_tokens, 4000);
@@ -388,6 +425,65 @@ test("成功识别时校验图片、调用托管模型、规范化草稿并删�
   assert.equal(job.status, "completed");
   assert.equal(job.cleanupRequired, false);
   assert.equal(JSON.stringify(job).includes("完成练习"), false, "任务文档不能保存识别正文");
+});
+
+test("旧任务缺少识别范围时分析按智能判断兼容", async () => {
+  let prompt = "";
+  const fixture = createFixture({ onGenerate: (input) => {
+    prompt = input.messages[0].content.find((item) => item.type === "text").text;
+  } });
+  const created = await fixture.service.createImportJob(testUser.openid, { files: fileInput() });
+  const entry = [...fixture.getDocuments().entries()].find(([, value]) => value.type === "job");
+  const legacyJob = structuredClone(entry[1]);
+  delete legacyJob.importScope;
+  fixture.getDocuments().set(entry[0], legacyJob);
+
+  await fixture.service.analyzeImportJob(testUser.openid, { jobId: created.jobId });
+
+  assert.match(prompt, /当前范围为自动判断/);
+});
+
+test("模型明确因长度停止时返回分批识别错误并清理截图", async () => {
+  const fixture = createFixture({ modelResponse: {
+    text: '{"sourceType":"weekly_table","drafts":[',
+    rawResponses: [{ choices: [{ finish_reason: "length" }] }],
+  } });
+  const created = await fixture.service.createImportJob(testUser.openid, { files: fileInput(), importScope: "full_week" });
+
+  await assert.rejects(fixture.service.analyzeImportJob(testUser.openid, { jobId: created.jobId }), {
+    message: "MODEL_OUTPUT_TRUNCATED",
+  });
+  assert.deepEqual(fixture.getDeleted(), [created.uploads[0].fileId]);
+});
+
+test("模型正常结束可接收六十条并对超出上限结果提示分批导入", async () => {
+  const createPayload = (count) => ({
+    sourceType: "weekly_table",
+    detectedScope: "friday_weekend",
+    weekLabel: "第2周",
+    truncated: false,
+    drafts: Array.from({ length: count }, (_, index) => ({
+      subject: "数学", title: `练习 ${index + 1}`, content: "", extraRequirement: "",
+      deadlineExplicit: false, deadline: "", uncertainFields: [],
+    })),
+  });
+  const fullFixture = createFixture({ modelResponse: {
+    text: JSON.stringify(createPayload(60)),
+    rawResponses: [{ choices: [{ finish_reason: "stop" }] }],
+  } });
+  const fullJob = await fullFixture.service.createImportJob(testUser.openid, { files: fileInput(), importScope: "full_week" });
+  const fullResult = await fullFixture.service.analyzeImportJob(testUser.openid, { jobId: fullJob.jobId });
+  assert.equal(fullResult.drafts.length, 60);
+  assert.doesNotMatch(fullResult.warnings.join("；"), /分批导入/);
+
+  const overflowFixture = createFixture({ modelResponse: {
+    text: JSON.stringify(createPayload(61)),
+    rawResponses: [{ choices: [{ finish_reason: "stop" }] }],
+  } });
+  const overflowJob = await overflowFixture.service.createImportJob(testUser.openid, { files: fileInput(), importScope: "full_week" });
+  const overflowResult = await overflowFixture.service.analyzeImportJob(testUser.openid, { jobId: overflowJob.jobId });
+  assert.equal(overflowResult.drafts.length, 60);
+  assert.match(overflowResult.warnings.join("；"), /选择具体星期分批导入/);
 });
 
 test("任务中文件标识被伪造时在模型调用前拒绝并执行清理", async () => {

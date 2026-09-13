@@ -49,7 +49,7 @@
 - `habit_checkins.pointsAwarded`：记录该日期是否已发放积分，防止反复修改打卡状态导致重复计分；旧记录若 `status` 已为 `completed`，按已发放处理。
 - `message_subscriptions`：按当前 OpenID 和待办模板保存预计可用次数、最近订阅结果及受控请求编号；文档 ID 由服务端生成，客户端禁止直接读写。
 - `reminder_deliveries`：按通知、提醒版本、接收人和模板生成确定性发送记录，保存调度、占用、发送、失败或取消状态；客户端禁止直接读写。
-- `ai_import_jobs`：保存 AI 导入任务与北京时间每日限流文档。任务绑定服务端解析的 OpenID 和 `familyId`，只记录临时文件、状态、过期时间及清理结果，不保存识别正文；客户端禁止直接读写。
+- `ai_import_jobs`：保存 AI 导入任务与北京时间每日限流文档。任务绑定服务端解析的 OpenID、`familyId` 和白名单 `importScope`，只记录临时文件、状态、过期时间及清理结果，不保存识别正文；客户端禁止直接读写。旧任务缺失 `importScope` 时按 `auto` 兼容，分析接口不得接受客户端改写范围。
 
 AI 作业导入使用 CloudBase 托管模型，不保存或下发 API Key。模型名和每日任务上限只从 `ai` 云函数环境变量 `AI_MODEL`、`AI_DAILY_LIMIT` 读取；缺失或非法时功能按关闭处理，响应不得返回模型名、额度或服务端配置。`settings` 中既有供应商、Base URL 和模型名仍只作为旧版占位，不参与本功能。
 
@@ -66,6 +66,7 @@ AI 作业导入使用 CloudBase 托管模型，不保存或下发 API Key。模�
 7. 为 `ai-imports/` 前缀配置短期对象生命周期，作为小程序崩溃、断网、宿主硬超时或迟到上传导致即时删除未完成时的兜底；生命周期不能替代识别和取消接口的即时删除。
 8. 在再次提交小程序审核前更新“用户隐私保护指引”：按控制台实际枚举声明导入页会选择相册图片或调用相机，说明截图仅用于本次 AI 作业识别、不会保存为作业附件，并与临时文件删除策略保持一致。
 9. 部署后分别用创建者、普通成员和孩子账号验证允许、允许和拒绝，再验证过大文件、伪造任务 ID、重复分析、额度耗尽和临时文件清理。
+10. `ai` 使用 `homework.list` 的 `created_at_desc` 白名单模式单次读取当前学期最近 50 条，部署前必须创建 `homework: familyId ASC, semester ASC, createdAt DESC` 复合索引；该模式不改变普通作业列表的业务排序。
 
 ## 推荐索引
 
@@ -80,6 +81,7 @@ family_join_requests:   familyId ASC, status ASC, createdAt ASC
 family_join_requests:   applicantOpenid ASC, status ASC
 family_search_limits:   openid ASC, date ASC
 homework:               familyId ASC, semester ASC, subject ASC, isCompleted ASC, createdAt DESC
+homework:               familyId ASC, semester ASC, createdAt DESC
 notices:                familyId ASC, semester ASC, category ASC, createdAt DESC
 notices:                reminderState ASC, scheduledAt ASC
 habits:                 familyId ASC, semester ASC, category ASC, isActive ASC, createdAt DESC

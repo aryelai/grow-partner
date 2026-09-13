@@ -1,6 +1,9 @@
 const MAX_IMAGES = 3;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_DRAFTS = 60;
+const DUPLICATE_PAGE_SIZE = 50;
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
+const UNCERTAIN_FIELDS = new Set(["subject", "title", "content", "extraRequirement", "deadline"]);
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 
 function getExtension(filePath) {
@@ -158,25 +161,94 @@ function splitDeadline(deadline) {
 function createEditableDrafts(drafts, subjects, semester, jobId) {
   const validSubjects = new Set(Array.isArray(subjects) ? subjects : []);
   if (!Array.isArray(drafts)) return [];
-  return drafts.slice(0, 20).map((draft, index) => {
+  return drafts.slice(0, MAX_DRAFTS).map((draft, index) => {
     const requestId = `${typeof jobId === "string" ? jobId.trim() : ""}_${index}`;
     if (!REQUEST_ID_PATTERN.test(requestId)) throw new Error("识别任务编号无效，请重新识别");
     const deadline = splitDeadline(draft && draft.hasDeadline === true ? draft.deadline : "");
     const subject = cleanText(draft && draft.subject, 20);
+    const uncertainFields = [...new Set(Array.isArray(draft && draft.uncertainFields)
+      ? draft.uncertainFields.filter((field) => typeof field === "string" && UNCERTAIN_FIELDS.has(field))
+      : [])];
     return {
       localId: `draft-${requestId}`,
       requestId,
       selected: true,
       saved: false,
       saveError: "",
+      possibleDuplicate: false,
       semester: /^\d{4}(上|下)$/.test(String(draft && draft.semester)) ? draft.semester : semester,
       subject: validSubjects.has(subject) ? subject : "",
       title: cleanText(draft && draft.title, 50),
       content: cleanText(draft && draft.content, 2000),
       extraRequirement: cleanText(draft && draft.extraRequirement, 100),
+      uncertainFields,
+      subjectUncertain: uncertainFields.includes("subject"),
+      titleUncertain: uncertainFields.includes("title"),
+      contentUncertain: uncertainFields.includes("content"),
+      extraRequirementUncertain: uncertainFields.includes("extraRequirement"),
+      deadlineUncertain: uncertainFields.includes("deadline"),
       ...deadline,
     };
   });
+}
+
+function createHomeworkFingerprint(item) {
+  const semester = cleanText(item && item.semester, 8);
+  const subject = cleanText(item && item.subject, 20);
+  const title = cleanText(item && item.title, 50);
+  if (!/^\d{4}(上|下)$/.test(semester) || !subject || !title) return "";
+  return JSON.stringify([
+    semester,
+    subject,
+    title,
+    cleanText(item && item.content, 2000),
+    cleanText(item && item.extraRequirement, 100),
+  ]);
+}
+
+async function checkPossibleDuplicates(drafts, semester, loadPage) {
+  const safeDrafts = Array.isArray(drafts)
+    ? drafts.map((draft) => ({
+      ...draft,
+      uncertainFields: Array.isArray(draft.uncertainFields) ? [...draft.uncertainFields] : [],
+    }))
+    : [];
+  if (typeof loadPage !== "function") {
+    return { drafts: safeDrafts, warning: "重复检查失败，请保存前人工确认" };
+  }
+
+  try {
+    const result = await loadPage({
+      semester,
+      subject: "全部",
+      status: "all",
+      keyword: "",
+      sortMode: "created_at_desc",
+      page: 1,
+      pageSize: DUPLICATE_PAGE_SIZE,
+    });
+    if (!result || !Array.isArray(result.items)) throw new Error("INVALID_HOMEWORK_LIST");
+    const existingItems = result.items.slice(0, DUPLICATE_PAGE_SIZE);
+
+    const fingerprints = new Set(existingItems.map(createHomeworkFingerprint).filter(Boolean));
+    let duplicateCount = 0;
+    const checkedDrafts = safeDrafts.map((draft) => {
+      const fingerprint = createHomeworkFingerprint(draft);
+      const possibleDuplicate = Boolean(fingerprint) && fingerprints.has(fingerprint);
+      if (fingerprint) fingerprints.add(fingerprint);
+      if (possibleDuplicate) duplicateCount += 1;
+      return possibleDuplicate ? { ...draft, possibleDuplicate: true, selected: false } : draft;
+    });
+    const warnings = [];
+    if (duplicateCount) warnings.push(`发现 ${duplicateCount} 条可能重复作业，已默认取消勾选，可人工重新勾选`);
+    return { drafts: checkedDrafts, warning: warnings.join("；") };
+  } catch (error) {
+    return {
+      drafts: safeDrafts,
+      warning: "重复检查失败，识别结果仍可继续核对和保存",
+      error,
+    };
+  }
 }
 
 function createHomeworkPayload(draft) {
@@ -220,8 +292,10 @@ function createHomeworkPayload(draft) {
 module.exports = {
   MAX_IMAGES,
   MAX_IMAGE_BYTES,
+  MAX_DRAFTS,
   validateSelectedFiles,
   uploadFileWithCredential,
   createEditableDrafts,
+  checkPossibleDuplicates,
   createHomeworkPayload,
 };

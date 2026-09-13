@@ -3,6 +3,12 @@
 .intro-text { line-height: 1.7; }
 .privacy-note { margin-top: 20rpx; padding: 18rpx; border-radius: 12rpx; background: #F0F7F2; color: #247A43; font-size: 23rpx; line-height: 1.6; }
 .blocked-note { margin-top: 20rpx; padding: 18rpx; border-radius: 12rpx; background: #FFF4E5; color: #A65F00; }
+.scope-section { margin-bottom: 30rpx; padding-bottom: 26rpx; border-bottom: 2rpx solid var(--border); }
+.scope-help { line-height: 1.6; }
+.scope-options { display: flex; flex-wrap: wrap; gap: 14rpx; margin-top: 18rpx; }
+.scope-option { display: flex; align-items: center; padding: 12rpx 18rpx; border: 2rpx solid var(--border); border-radius: 999rpx; color: var(--text-light); font-size: 24rpx; }
+.scope-option.active { border-color: var(--primary); background: #EEF6FF; color: var(--primary); }
+.scope-option radio { margin-right: 6rpx; transform: scale(0.74); }
 .compact-title { margin: 0 0 8rpx; }
 .select-button { flex-shrink: 0; margin-left: 18rpx; padding: 0 24rpx; font-size: 25rpx; }
 .preview-grid { display: flex; flex-wrap: wrap; gap: 14rpx; margin-top: 24rpx; }
@@ -14,12 +20,19 @@
 .warning-card { margin-bottom: 20rpx; padding: 22rpx 28rpx; border-radius: 18rpx; background: #FFF9E8; color: #8A5A00; }
 .warning-title { margin-bottom: 10rpx; font-weight: 600; }
 .warning-item { padding: 5rpx 0; font-size: 24rpx; line-height: 1.5; }
+.summary-card { padding-top: 20rpx; padding-bottom: 20rpx; }
+.summary-item { display: flex; justify-content: space-between; padding: 10rpx 0; color: var(--text-light); font-size: 25rpx; }
+.summary-item text:last-child { color: var(--text); font-weight: 600; }
 .draft-card { margin-bottom: 22rpx; padding: 28rpx; border: 2rpx solid transparent; border-radius: 20rpx; background: #fff; box-shadow: 0 6rpx 24rpx rgba(44, 62, 80, 0.06); }
 .draft-card.saved { opacity: 0.72; border-color: #B9E6C8; background: #F8FCF9; }
+.draft-card.possible-duplicate { border-color: #F3C474; }
 .draft-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26rpx; }
 .draft-check { display: flex; align-items: center; font-size: 31rpx; font-weight: 600; }
 .draft-check checkbox { margin-right: 10rpx; transform: scale(0.86); }
 .saved-badge { color: var(--success); font-size: 24rpx; }
+.duplicate-note { margin-bottom: 18rpx; padding: 14rpx 18rpx; border-radius: 10rpx; background: #FFF4E5; color: #9B5C00; font-size: 23rpx; line-height: 1.5; }
+.uncertain-note { margin-bottom: 18rpx; color: #8A5A00; font-size: 23rpx; }
+.uncertain-field { margin-right: -12rpx; margin-left: -12rpx; padding: 12rpx; border-radius: 12rpx; background: #FFF9D9; }
 .subject-scroll { width: 100%; white-space: nowrap; }
 .subject-row { display: inline-flex; padding-bottom: 8rpx; }
 .field-warning { margin-top: 8rpx; color: var(--warning); font-size: 23rpx; }

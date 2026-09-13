@@ -3,11 +3,23 @@ const { requireFamily } = require("../../utils/session");
 const { DEFAULT_SUBJECTS } = require("../../utils/constants");
 const { canPerform } = require("../../utils/permissions");
 const {
+  MAX_DRAFTS,
   validateSelectedFiles,
   uploadFileWithCredential,
   createEditableDrafts,
   createHomeworkPayload,
+  checkPossibleDuplicates,
 } = require("../../utils/ai-import");
+
+const IMPORT_SCOPE_OPTIONS = [
+  { value: "auto", label: "智能判断" },
+  { value: "monday", label: "星期一" },
+  { value: "tuesday", label: "星期二" },
+  { value: "wednesday", label: "星期三" },
+  { value: "thursday", label: "星期四" },
+  { value: "friday_weekend", label: "星期五/周末" },
+  { value: "full_week", label: "整周" },
+];
 
 Page({
   data: {
@@ -16,6 +28,9 @@ Page({
     selectedFiles: [],
     drafts: [],
     warnings: [],
+    importScope: "auto",
+    importScopes: IMPORT_SCOPE_OPTIONS,
+    summary: null,
     enabled: false,
     blockedReason: "",
     phase: "initial",
@@ -86,6 +101,17 @@ Page({
     }
   },
 
+  changeImportScope(event) {
+    const importScope = event && event.detail && event.detail.value;
+    if (this.data.processing || this.data.saving) return;
+    if (!IMPORT_SCOPE_OPTIONS.some((item) => item.value === importScope)) return;
+    if (this.data.drafts.some((draft) => !draft.saved)) {
+      wx.showToast({ title: "请先处理当前识别草稿", icon: "none" });
+      return;
+    }
+    this.setData({ importScope });
+  },
+
   async chooseScreenshots() {
     if (!canPerform(this.currentUser && this.currentUser.role, "importHomework")) {
       wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
@@ -114,6 +140,7 @@ Page({
         selectedFiles,
         drafts: [],
         warnings: [],
+        summary: null,
         phase: "selected",
         progressText: `已选择 ${selectedFiles.length} 张截图`,
         saveProgress: "",
@@ -139,7 +166,10 @@ Page({
       const selectedFiles = this.data.selectedFiles.slice();
       this.setData({ phase: "uploading", progressText: "正在申请临时上传凭据…", warnings: [], saveProgress: "" });
       const files = selectedFiles.map(({ name, mimeType, size }) => ({ name, mimeType, size }));
-      const job = await callFunction("ai", "createImportJob", { files });
+      const job = await callFunction("ai", "createImportJob", {
+        files,
+        importScope: this.data.importScope,
+      });
       if (!job || typeof job.jobId !== "string" || !job.jobId) {
         throw new Error("服务端返回的上传任务不完整");
       }
@@ -172,10 +202,36 @@ Page({
       if (this.pageDestroyed) return;
       const drafts = createEditableDrafts(result.drafts, this.data.subjects, this.data.semester, jobId);
       if (!drafts.length) throw new Error("没有识别到可确认的作业，请更换清晰截图重试");
+      this.setData({ phase: "checking", progressText: "正在检查可能重复的作业…" });
+      const duplicateResult = await checkPossibleDuplicates(
+        drafts,
+        this.data.semester,
+        (input) => callFunction("homework", "list", input),
+      );
+      if (duplicateResult.error) {
+        console.error("Check AI import duplicates failed", { message: duplicateResult.error.message });
+      }
+      if (this.pageDestroyed) return;
+      const warnings = Array.isArray(result.warnings)
+        ? result.warnings.filter((item) => typeof item === "string" && item.trim()).slice(0, 20)
+        : [];
+      if (Array.isArray(result.drafts) && result.drafts.length > MAX_DRAFTS) {
+        warnings.push(`客户端一次最多展示 ${MAX_DRAFTS} 条作业，其余结果已截断`);
+      }
+      if (duplicateResult.warning) warnings.push(duplicateResult.warning);
+      const summary = result.summary && typeof result.summary === "object"
+        ? {
+          sourceType: String(result.summary.sourceType || "unknown").slice(0, 20),
+          sourceTypeLabel: String(result.summary.sourceTypeLabel || "未知版式").slice(0, 20),
+          scopeLabel: String(result.summary.scopeLabel || "自动判断").slice(0, 20),
+          weekLabel: String(result.summary.weekLabel || "").slice(0, 20),
+        }
+        : { sourceType: "unknown", sourceTypeLabel: "未知版式", scopeLabel: "自动判断", weekLabel: "" };
       this.setData({
         selectedFiles: [],
-        drafts,
-        warnings: Array.isArray(result.warnings) ? result.warnings.filter((item) => typeof item === "string" && item.trim()).slice(0, 20) : [],
+        drafts: duplicateResult.drafts,
+        warnings,
+        summary,
         phase: "ready",
         progressText: `已识别 ${drafts.length} 条作业，请逐条核对`,
       });
@@ -205,7 +261,14 @@ Page({
     const field = event.currentTarget.dataset.field;
     const draft = this.data.drafts[index];
     if (!draft || draft.saved || this.data.saving || !["title", "content", "extraRequirement"].includes(field)) return;
-    this.setData({ [`drafts[${index}].${field}`]: event.detail.value, [`drafts[${index}].saveError`]: "" });
+    const uncertainFields = Array.isArray(draft.uncertainFields) ? draft.uncertainFields : [];
+    this.setData({
+      [`drafts[${index}].${field}`]: event.detail.value,
+      [`drafts[${index}].${field}Uncertain`]: false,
+      [`drafts[${index}].uncertainFields`]: uncertainFields.filter((item) => item !== field),
+      [`drafts[${index}].possibleDuplicate`]: false,
+      [`drafts[${index}].saveError`]: "",
+    });
   },
 
   selectSubject(event) {
@@ -213,14 +276,26 @@ Page({
     const draft = this.data.drafts[index];
     const subject = event.currentTarget.dataset.value;
     if (!draft || draft.saved || this.data.saving || !this.data.subjects.includes(subject)) return;
-    this.setData({ [`drafts[${index}].subject`]: subject, [`drafts[${index}].saveError`]: "" });
+    const uncertainFields = Array.isArray(draft.uncertainFields) ? draft.uncertainFields : [];
+    this.setData({
+      [`drafts[${index}].subject`]: subject,
+      [`drafts[${index}].subjectUncertain`]: false,
+      [`drafts[${index}].uncertainFields`]: uncertainFields.filter((item) => item !== "subject"),
+      [`drafts[${index}].possibleDuplicate`]: false,
+      [`drafts[${index}].saveError`]: "",
+    });
   },
 
   onDeadlineSwitch(event) {
     const index = Number(event.currentTarget.dataset.index);
     const draft = this.data.drafts[index];
     if (!draft || draft.saved || this.data.saving) return;
-    const changes = { [`drafts[${index}].hasDeadline`]: event.detail.value === true };
+    const uncertainFields = Array.isArray(draft.uncertainFields) ? draft.uncertainFields : [];
+    const changes = {
+      [`drafts[${index}].hasDeadline`]: event.detail.value === true,
+      [`drafts[${index}].deadlineUncertain`]: false,
+      [`drafts[${index}].uncertainFields`]: uncertainFields.filter((item) => item !== "deadline"),
+    };
     if (event.detail.value === true && (!draft.deadlineDate || !draft.deadlineTime)) {
       const now = new Date();
       const pad = (value) => String(value).padStart(2, "0");
@@ -232,14 +307,26 @@ Page({
 
   onDeadlineDate(event) {
     const index = Number(event.currentTarget.dataset.index);
-    if (!this.data.drafts[index] || this.data.drafts[index].saved || this.data.saving) return;
-    this.setData({ [`drafts[${index}].deadlineDate`]: event.detail.value });
+    const draft = this.data.drafts[index];
+    if (!draft || draft.saved || this.data.saving) return;
+    const uncertainFields = Array.isArray(draft.uncertainFields) ? draft.uncertainFields : [];
+    this.setData({
+      [`drafts[${index}].deadlineDate`]: event.detail.value,
+      [`drafts[${index}].deadlineUncertain`]: false,
+      [`drafts[${index}].uncertainFields`]: uncertainFields.filter((item) => item !== "deadline"),
+    });
   },
 
   onDeadlineTime(event) {
     const index = Number(event.currentTarget.dataset.index);
-    if (!this.data.drafts[index] || this.data.drafts[index].saved || this.data.saving) return;
-    this.setData({ [`drafts[${index}].deadlineTime`]: event.detail.value });
+    const draft = this.data.drafts[index];
+    if (!draft || draft.saved || this.data.saving) return;
+    const uncertainFields = Array.isArray(draft.uncertainFields) ? draft.uncertainFields : [];
+    this.setData({
+      [`drafts[${index}].deadlineTime`]: event.detail.value,
+      [`drafts[${index}].deadlineUncertain`]: false,
+      [`drafts[${index}].uncertainFields`]: uncertainFields.filter((item) => item !== "deadline"),
+    });
   },
 
   async saveSelected() {

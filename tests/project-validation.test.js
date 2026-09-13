@@ -77,6 +77,7 @@ test("提醒云函数声明额外 OpenAPI 权限会使项目静态校验失败",
 for (const [indexDescription, expectedError] of [
   ["users:                  familyId ASC, role ASC", /家庭成员物化查询索引缺失/],
   ["users:                  familyId ASC, openid ASC", /提醒接收人复核查询索引缺失/],
+  ["homework:               familyId ASC, semester ASC, createdAt DESC", /AI 重复检查最近作业索引缺失/],
   ["reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC", /待提醒状态查询索引缺失/],
 ]) {
   test(`部署文档缺少 ${indexDescription.trim()} 会使项目静态校验失败`, () => {

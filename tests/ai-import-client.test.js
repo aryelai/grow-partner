@@ -6,10 +6,12 @@ const vm = require("node:vm");
 
 const {
   MAX_IMAGE_BYTES,
+  MAX_DRAFTS,
   validateSelectedFiles,
   uploadFileWithCredential,
   createEditableDrafts,
   createHomeworkPayload,
+  checkPossibleDuplicates,
 } = require("../miniprogram/utils/ai-import");
 const { canPerform } = require("../miniprogram/utils/permissions");
 
@@ -190,6 +192,87 @@ test("同一识别草稿重复保存会复用安全稳定的请求编号", () =>
   assert.throws(() => createHomeworkPayload({ ...draft, requestId: "a".repeat(65) }), /识别草稿编号无效/);
 });
 
+test("可编辑草稿保留不确定字段并支持六十条整周作业", () => {
+  const drafts = createEditableDrafts(Array.from({ length: 62 }, (_, index) => ({
+    semester: "2026下",
+    subject: "数学",
+    title: `练习 ${index + 1}`,
+    content: "完成题目",
+    extraRequirement: "",
+    hasDeadline: false,
+    deadline: "",
+    uncertainFields: index === 0 ? ["title", "deadline", "ignored"] : [],
+  })), ["数学"], "2026下", TEST_JOB_ID);
+
+  assert.equal(drafts.length, 60);
+  assert.deepEqual(drafts[0].uncertainFields, ["title", "deadline"]);
+  assert.equal(drafts[0].titleUncertain, true);
+  assert.equal(drafts[0].deadlineUncertain, true);
+  assert.equal(drafts[0].possibleDuplicate, false);
+});
+
+test("重复检查只读取最近五十条并默认取消精确重复草稿", async () => {
+  const drafts = createEditableDrafts([
+    { semester: "2026下", subject: "语文", title: "背诵课文", content: "第一段", extraRequirement: "", hasDeadline: false },
+    { semester: "2026下", subject: "数学", title: "练习册", content: "第20页", extraRequirement: "订正", hasDeadline: false },
+  ], ["语文", "数学"], "2026下", TEST_JOB_ID);
+  const calls = [];
+  const result = await checkPossibleDuplicates(drafts, "2026下", async (input) => {
+    calls.push(input);
+    const items = Array.from({ length: 50 }, (_, index) => ({
+      semester: "2026下", subject: "其他", title: `已有 ${index}`, content: "", extraRequirement: "",
+    }));
+    items[0] = {
+      semester: "2026下", subject: "数学", title: "练习册", content: "第20页", extraRequirement: "订正",
+    };
+    return { items, hasMore: true, truncated: true };
+  });
+
+  assert.deepEqual(calls, [{
+    semester: "2026下",
+    subject: "全部",
+    status: "all",
+    keyword: "",
+    sortMode: "created_at_desc",
+    page: 1,
+    pageSize: 50,
+  }]);
+  assert.equal(result.drafts[0].selected, true);
+  assert.equal(result.drafts[1].possibleDuplicate, true);
+  assert.equal(result.drafts[1].selected, false);
+  assert.doesNotMatch(result.warning, /500/);
+});
+
+test("重复检查会标记同批完全重复但保留相似作业", async () => {
+  const drafts = createEditableDrafts([
+    { semester: "2026下", subject: "数学", title: "练习册", content: "第20页", extraRequirement: "订正" },
+    { semester: "2026下", subject: "数学", title: "练习册", content: "第20页", extraRequirement: "订正" },
+    { semester: "2026下", subject: "数学", title: "练习册", content: "第21页", extraRequirement: "订正" },
+  ], ["数学"], "2026下", TEST_JOB_ID);
+
+  const result = await checkPossibleDuplicates(drafts, "2026下", async () => ({ items: [] }));
+
+  assert.equal(result.drafts[0].possibleDuplicate, false);
+  assert.equal(result.drafts[0].selected, true);
+  assert.equal(result.drafts[1].possibleDuplicate, true);
+  assert.equal(result.drafts[1].selected, false);
+  assert.equal(result.drafts[2].possibleDuplicate, false);
+  assert.equal(result.drafts[2].selected, true);
+});
+
+test("重复检查失败时保留全部草稿选择且不阻断识别", async () => {
+  const drafts = createEditableDrafts([
+    { semester: "2026下", subject: "语文", title: "背诵课文", content: "第一段", extraRequirement: "", hasDeadline: false },
+  ], ["语文"], "2026下", TEST_JOB_ID);
+  const result = await checkPossibleDuplicates(drafts, "2026下", async () => {
+    throw new Error("数据库暂时不可用");
+  });
+
+  assert.equal(result.drafts[0].selected, true);
+  assert.equal(result.drafts[0].possibleDuplicate, false);
+  assert.match(result.warning, /重复检查失败/);
+});
+
 function setByPath(target, key, value) {
   const segments = key.match(/[^.[\]]+/g);
   let current = target;
@@ -244,10 +327,12 @@ function loadImportPage(overrides = {}) {
       if (request === "../../utils/ai-import") {
         return {
           MAX_IMAGE_BYTES,
+          MAX_DRAFTS,
           validateSelectedFiles,
           uploadFileWithCredential: overrides.uploadFileWithCredential || (async () => {}),
           createEditableDrafts: require("../miniprogram/utils/ai-import").createEditableDrafts,
           createHomeworkPayload: require("../miniprogram/utils/ai-import").createHomeworkPayload,
+          checkPossibleDuplicates: require("../miniprogram/utils/ai-import").checkPossibleDuplicates,
         };
       }
       if (request === "../../utils/permissions") return { canPerform };
@@ -317,8 +402,10 @@ test("识别流程按顺序申请凭据、上传并识别但不自动保存", as
       if (name === "ai" && action === "analyzeImportJob") return {
         drafts: [{ semester: "2026下", subject: "数学", title: "练习册", content: "第 20 页", extraRequirement: "订正", hasDeadline: false, deadline: "" }],
         warnings: ["请核对题号"],
+        summary: { sourceType: "daily_list", sourceTypeLabel: "单日作业清单", scopeLabel: "全部作业", weekLabel: "" },
       };
-      if (name === "homework") throw new Error("识别阶段不得保存作业");
+      if (name === "homework" && action === "list") return { items: [], hasMore: false, truncated: false };
+      if (name === "homework" && action === "create") throw new Error("识别阶段不得保存作业");
       throw new Error(`测试未实现请求：${name}.${action}`);
     },
   });
@@ -329,6 +416,7 @@ test("识别流程按顺序申请凭据、上传并识别但不自动保存", as
 
   assert.deepEqual(JSON.parse(JSON.stringify(events[2].options)), { count: 3, mediaType: ["image"], sourceType: ["album", "camera"], sizeType: ["compressed"] });
   assert.deepEqual(JSON.parse(JSON.stringify(events.filter((item) => item.type === "call" && item.action === "createImportJob")[0].data)), {
+    importScope: "auto",
     files: [
       { name: "image-1.jpg", mimeType: "image/jpeg", size: 2 },
       { name: "image-2.png", mimeType: "image/png", size: 2 },
@@ -336,12 +424,112 @@ test("识别流程按顺序申请凭据、上传并识别但不自动保存", as
   });
   assert.equal(events.filter((item) => item.type === "upload").length, 2);
   assert.deepEqual(JSON.parse(JSON.stringify(events.filter((item) => item.type === "call" && item.action === "analyzeImportJob")[0].data)), { jobId: TEST_JOB_ID });
-  assert.equal(events.some((item) => item.name === "homework"), false);
+  assert.equal(events.some((item) => item.name === "homework" && item.action === "create"), false);
+  assert.equal(events.filter((item) => item.name === "homework" && item.action === "list").length, 1);
   assert.equal(fixture.page.data.drafts[0].selected, true);
   assert.equal(fixture.page.data.drafts[0].saved, false);
   assert.equal(fixture.page.data.drafts[0].requestId, `${TEST_JOB_ID}_0`);
   assert.equal(fixture.page.data.phase, "ready");
+  assert.equal(fixture.page.data.summary.sourceTypeLabel, "单日作业清单");
+  assert.equal(fixture.page.data.summary.scopeLabel, "全部作业");
   assert.equal(fixture.guards.some((item) => item.type === "enable"), true);
+});
+
+test("页面默认智能判断且允许选择周表星期或整周范围", async () => {
+  const template = fs.readFileSync(path.resolve(__dirname, "../miniprogram/pages/homework-import/homework-import.wxml"), "utf8");
+  const fixture = loadImportPage();
+  await fixture.page.onLoad();
+
+  assert.equal(fixture.page.data.importScope, "auto");
+  assert.deepEqual(fixture.page.data.importScopes.map((item) => item.value), [
+    "auto", "monday", "tuesday", "wednesday", "thursday", "friday_weekend", "full_week",
+  ]);
+  fixture.page.changeImportScope({ detail: { value: "full_week" } });
+  assert.equal(fixture.page.data.importScope, "full_week");
+  assert.match(template, /周表取最新一列，单日图取全部/);
+  assert.match(template, /仅检查当前学期最近 50 条已有作业/);
+  assert.match(template, /radio-group/);
+});
+
+test("识别后重复作业默认取消勾选并可由用户重新勾选", async () => {
+  const fixture = loadImportPage({
+    async callFunction(name, action) {
+      if (name === "settings") return { subjects: ["语文", "数学"] };
+      if (name === "ai" && action === "getStatus") return { enabled: true, canImport: true };
+      if (name === "ai" && action === "createImportJob") return { jobId: TEST_JOB_ID, uploads: [{ url: "https://example.com/one" }] };
+      if (name === "ai" && action === "analyzeImportJob") return {
+        drafts: [{ semester: "2026下", subject: "语文", title: "背诵课文", content: "第一段", extraRequirement: "", hasDeadline: false, uncertainFields: [] }],
+        warnings: [],
+        summary: { sourceType: "weekly_table", sourceTypeLabel: "周作业登记表", scopeLabel: "星期五/周末", weekLabel: "第2周" },
+      };
+      if (name === "homework" && action === "list") return {
+        items: [{ semester: "2026下", subject: "语文", title: "背诵课文", content: "第一段", extraRequirement: "" }],
+        hasMore: false,
+        truncated: false,
+      };
+      throw new Error(`测试未实现请求：${name}.${action}`);
+    },
+  });
+  await fixture.page.onLoad();
+  fixture.page.setData({ selectedFiles: [imageFile({ size: 3 })] });
+
+  await fixture.page.recognize();
+
+  assert.equal(fixture.page.data.drafts[0].possibleDuplicate, true);
+  assert.equal(fixture.page.data.drafts[0].selected, false);
+  assert.match(fixture.page.data.warnings.join("；"), /可能重复/);
+  fixture.page.toggleDraft({ currentTarget: { dataset: { index: 0 } } });
+  assert.equal(fixture.page.data.drafts[0].selected, true);
+});
+
+test("人工修改识别字段会清除对应不确定和旧重复标记", async () => {
+  const fixture = loadImportPage();
+  await fixture.page.onLoad();
+  fixture.page.setData({
+    drafts: [{
+      saved: false,
+      title: "模糊字迹",
+      uncertainFields: ["title", "content"],
+      titleUncertain: true,
+      contentUncertain: true,
+      possibleDuplicate: true,
+    }],
+  });
+
+  fixture.page.onDraftInput({
+    currentTarget: { dataset: { index: 0, field: "title" } },
+    detail: { value: "背诵课文" },
+  });
+
+  assert.equal(fixture.page.data.drafts[0].title, "背诵课文");
+  assert.equal(fixture.page.data.drafts[0].titleUncertain, false);
+  assert.deepEqual(fixture.page.data.drafts[0].uncertainFields, ["content"]);
+  assert.equal(fixture.page.data.drafts[0].possibleDuplicate, false);
+});
+
+test("服务端异常返回超过六十条时客户端截断并明确提示", async () => {
+  const fixture = loadImportPage({
+    async callFunction(name, action) {
+      if (name === "settings") return { subjects: ["语文"] };
+      if (name === "ai" && action === "getStatus") return { enabled: true, canImport: true };
+      if (name === "ai" && action === "createImportJob") return { jobId: TEST_JOB_ID, uploads: [{ url: "https://example.com/one" }] };
+      if (name === "ai" && action === "analyzeImportJob") return {
+        drafts: Array.from({ length: MAX_DRAFTS + 2 }, (_, index) => ({
+          semester: "2026下", subject: "语文", title: `作业 ${index + 1}`, content: "", extraRequirement: "", hasDeadline: false,
+        })),
+        warnings: [],
+      };
+      if (name === "homework" && action === "list") return { items: [], hasMore: false, truncated: false };
+      throw new Error(`测试未实现请求：${name}.${action}`);
+    },
+  });
+  await fixture.page.onLoad();
+  fixture.page.setData({ selectedFiles: [imageFile({ size: 3 })] });
+
+  await fixture.page.recognize();
+
+  assert.equal(fixture.page.data.drafts.length, MAX_DRAFTS);
+  assert.match(fixture.page.data.warnings.join("；"), /客户端一次最多展示 60 条/);
 });
 
 test("权限检查延迟时连续点击识别只创建一个任务", async () => {
