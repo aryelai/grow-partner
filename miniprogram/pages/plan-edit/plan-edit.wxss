@@ -1,5 +1,5 @@
-.task-edit { display: flex; align-items: center; margin-bottom: 16rpx; }
-.task-edit .input { flex: 1; }
-.priority-picker .picker { padding: 20rpx 12rpx; text-align: center; }
-.priority-picker { width: 150rpx; margin-left: 12rpx; }.delete { width: 70rpx; margin-left: 12rpx; color: var(--danger); text-align: right; font-size: 23rpx; }
+.task-edit { display: flex; align-items: center; gap: 12rpx; margin-bottom: 16rpx; }
+.task-edit .input { flex: 1; min-width: 0; }
+.priority-picker .picker { justify-content: center; padding: 0 12rpx; text-align: center; }
+.priority-picker { flex: 0 0 150rpx; width: 150rpx; }.delete { display: flex; align-items: center; justify-content: flex-end; flex: 0 0 76rpx; min-height: 88rpx; color: var(--danger); font-size: 23rpx; }
 .save { margin-top: 24rpx; }.remove-button { margin-top: 18rpx; margin-bottom: 60rpx; }

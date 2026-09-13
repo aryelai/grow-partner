@@ -1,8 +1,8 @@
 <view class="page">
   <view class="card">
-    <view class="field"><text class="field-label">标题 *</text><input class="input" maxlength="80" value="{{form.title}}" data-field="title" bindinput="onInput" disabled="{{submitting || initializing || initializationFailed}}" /></view>
+    <view class="field"><text class="field-label">标题 *</text><input class="input" maxlength="80" value="{{form.title}}" data-field="title" bindinput="onInput" placeholder="请输入通知标题" disabled="{{submitting || initializing || initializationFailed}}" /></view>
     <view class="field"><text class="field-label">来源</text><input class="input" maxlength="60" value="{{form.source}}" data-field="source" bindinput="onInput" placeholder="例如：班主任-王老师" disabled="{{submitting || initializing || initializationFailed}}" /></view>
-    <view class="field"><text class="field-label">分类</text><view><text wx:for="{{categories}}" wx:key="value" class="tag {{form.category === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</text></view></view>
+    <view class="field"><text class="field-label">分类</text><view class="tag-group"><text wx:for="{{categories}}" wx:key="value" class="tag {{form.category === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</text></view></view>
     <view class="field"><text class="field-label">内容</text><textarea class="textarea" maxlength="3000" value="{{form.content}}" data-field="content" bindinput="onInput" disabled="{{submitting || initializing || initializationFailed}}" /></view>
     <view class="muted">家庭内测期间暂不支持新增附件，已有图片仍可查看。</view>
     <view class="image-grid"><view class="image-wrap" wx:for="{{form.images}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /><text wx:if="{{!submitting}}" data-index="{{index}}" bindtap="removeImage">×</text></view></view>

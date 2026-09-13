@@ -36,9 +36,9 @@
 .subject-scroll { width: 100%; white-space: nowrap; }
 .subject-row { display: inline-flex; padding-bottom: 8rpx; }
 .field-warning { margin-top: 8rpx; color: var(--warning); font-size: 23rpx; }
-.deadline-switch { display: flex; align-items: center; justify-content: space-between; padding: 20rpx 0; border-top: 2rpx solid var(--border); }
+.deadline-switch { display: flex; align-items: center; justify-content: space-between; min-height: 88rpx; padding: 8rpx 0; border-top: 2rpx solid var(--border); box-sizing: border-box; }
 .deadline-row { display: flex; gap: 14rpx; margin-top: 12rpx; }
-.deadline-row picker { flex: 1; }
+.deadline-row picker { flex: 1; min-width: 0; }
 .save-error { margin-top: 18rpx; padding: 14rpx 18rpx; border-radius: 10rpx; background: #FFF2F0; color: var(--danger); font-size: 23rpx; }
 .save-panel { position: fixed; right: 0; bottom: 0; left: 0; z-index: 10; padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom)); border-top: 2rpx solid var(--border); background: rgba(255, 255, 255, 0.98); }
 .save-progress { margin-bottom: 10rpx; color: var(--text-light); text-align: center; font-size: 23rpx; }
