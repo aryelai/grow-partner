@@ -22,7 +22,7 @@ function createTransport(response, capture) {
   };
 }
 
-test("Qwen TokenHub 请求固定官方端点并关闭思考与启用严格结构化输出", async () => {
+test("GLM TokenHub 请求固定官方端点并使用低推理强度和 JSON 对象输出", async () => {
   const calls = [];
   const gateway = createModelGateway({
     cloudbaseApp: {},
@@ -33,7 +33,7 @@ test("Qwen TokenHub 请求固定官方端点并关闭思考与启用严格结构
   });
   const response = await gateway.generate({
     provider: "tokenhub",
-    model: "qwen3.5-flash",
+    model: "glm-5.3-flash",
     apiKey: testTokenHubKey,
   }, { messages, max_tokens: 4000 });
 
@@ -42,36 +42,14 @@ test("Qwen TokenHub 请求固定官方端点并关闭思考与启用严格结构
   assert.equal(calls[0].url, TOKENHUB_ENDPOINT);
   assert.equal(calls[0].headers.Authorization, `Bearer ${testTokenHubKey}`);
   const body = JSON.parse(calls[0].body);
-  assert.equal(body.model, "qwen3.5-flash");
+  assert.equal(body.model, "glm-5.3-flash");
   assert.equal(body.stream, false);
   assert.equal(body.max_completion_tokens, 4000);
   assert.equal(body.temperature, 0.1);
-  assert.deepEqual(body.thinking, { type: "disabled" });
-  assert.equal(body.reasoning_effort, undefined);
-  assert.equal(body.response_format.type, "json_schema");
-  assert.equal(body.response_format.json_schema.strict, true);
-  assert.equal(body.messages[0].content[0].image_url.url, "data:image/jpeg;base64,/9j/");
-});
-
-test("GLM TokenHub 对照模型使用低推理强度和 JSON 对象输出", async () => {
-  const calls = [];
-  const gateway = createModelGateway({
-    cloudbaseApp: {},
-    tokenHubTransport: createTransport({
-      statusCode: 200,
-      body: JSON.stringify({ choices: [{ message: { content: "{\"drafts\":[]}" }, finish_reason: "stop" }] }),
-    }, calls),
-  });
-  await gateway.generate({
-    provider: "tokenhub",
-    model: "glm-5.3-flash",
-    apiKey: testTokenHubKey,
-  }, { messages, max_tokens: 4000 });
-
-  const body = JSON.parse(calls[0].body);
   assert.equal(body.thinking, undefined);
   assert.equal(body.reasoning_effort, "low");
   assert.deepEqual(body.response_format, { type: "json_object" });
+  assert.equal(body.messages[0].content[0].image_url.url, "data:image/jpeg;base64,/9j/");
 });
 
 test("TokenHub 非成功响应、超大响应和非法 JSON 映射为稳定内部错误", async () => {
@@ -88,7 +66,7 @@ test("TokenHub 非成功响应、超大响应和非法 JSON 映射为稳定内�
     });
     await assert.rejects(gateway.generate({
       provider: "tokenhub",
-      model: "qwen3.5-flash",
+      model: "glm-5.3-flash",
       apiKey: testTokenHubKey,
     }, { messages, max_tokens: 4000 }), { message: expected });
   }
@@ -125,7 +103,7 @@ test("TokenHub 适配层再次拒绝未知模型和无效密钥", async () => {
   }, []) });
   for (const configuration of [
     { provider: "tokenhub", model: "unknown-model", apiKey: testTokenHubKey },
-    { provider: "tokenhub", model: "qwen3.5-flash", apiKey: "short" },
+    { provider: "tokenhub", model: "glm-5.3-flash", apiKey: "short" },
   ]) {
     await assert.rejects(gateway.generate(configuration, { messages, max_tokens: 4000 }), {
       message: "CONFIGURATION",

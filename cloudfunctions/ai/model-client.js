@@ -3,7 +3,7 @@ const https = require("node:https");
 const TOKENHUB_ENDPOINT = "https://tokenhub.tencentmaas.com/v1/chat/completions";
 const TOKENHUB_TIMEOUT_MS = 60000;
 const MAX_TOKENHUB_RESPONSE_BYTES = 512 * 1024;
-const TOKENHUB_MODELS = new Set(["qwen3.5-flash", "glm-5.3-flash"]);
+const TOKENHUB_MODELS = new Set(["glm-5.3-flash"]);
 const TOKENHUB_API_KEY_PATTERN = /^[\x21-\x7e]{20,512}$/;
 const SAFE_TRANSPORT_ERRORS = new Set([
   "MODEL_AUTHENTICATION_FAILED",
@@ -12,54 +12,6 @@ const SAFE_TRANSPORT_ERRORS = new Set([
   "MODEL_RESPONSE_TOO_LARGE",
   "MODEL_TIMEOUT",
 ]);
-
-const HOMEWORK_IMPORT_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["sourceType", "detectedScope", "weekLabel", "truncated", "drafts"],
-  properties: {
-    sourceType: { type: "string", enum: ["weekly_table", "daily_list", "chat", "unknown"] },
-    detectedScope: {
-      type: "string",
-      enum: ["", "monday", "tuesday", "wednesday", "thursday", "friday_weekend"],
-    },
-    weekLabel: { type: "string" },
-    truncated: { type: "boolean" },
-    drafts: {
-      type: "array",
-      maxItems: 60,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "subject",
-          "title",
-          "content",
-          "extraRequirement",
-          "deadlineExplicit",
-          "deadline",
-          "uncertainFields",
-        ],
-        properties: {
-          subject: { type: "string" },
-          title: { type: "string" },
-          content: { type: "string" },
-          extraRequirement: { type: "string" },
-          deadlineExplicit: { type: "boolean" },
-          deadline: { type: "string" },
-          uncertainFields: {
-            type: "array",
-            uniqueItems: true,
-            items: {
-              type: "string",
-              enum: ["subject", "title", "content", "extraRequirement", "deadline"],
-            },
-          },
-        },
-      },
-    },
-  },
-};
 
 function requestTokenHub({ url, headers, body, timeoutMs = TOKENHUB_TIMEOUT_MS }) {
   return new Promise((resolve, reject) => {
@@ -124,20 +76,8 @@ function buildTokenHubBody(configuration, input) {
     temperature: 0.1,
     max_completion_tokens: input.max_tokens,
   };
-  if (configuration.model === "qwen3.5-flash") {
-    body.thinking = { type: "disabled" };
-    body.response_format = {
-      type: "json_schema",
-      json_schema: {
-        name: "homework_import",
-        strict: true,
-        schema: HOMEWORK_IMPORT_SCHEMA,
-      },
-    };
-  } else {
-    body.reasoning_effort = "low";
-    body.response_format = { type: "json_object" };
-  }
+  body.reasoning_effort = "low";
+  body.response_format = { type: "json_object" };
   return body;
 }
 
@@ -197,6 +137,5 @@ function createModelGateway({ cloudbaseApp, tokenHubTransport = requestTokenHub 
 
 module.exports = {
   TOKENHUB_ENDPOINT,
-  HOMEWORK_IMPORT_SCHEMA,
   createModelGateway,
 };

@@ -2,7 +2,7 @@
 
 ## 目标
 
-在个人版微信云开发环境中，让现有 AI 作业导入通过云函数直接调用 TokenHub 多模态模型，以 `qwen3.5-flash` 作为默认候选，并保持可测试、可限额、可关闭和可回滚。
+在个人版微信云开发环境中，让现有 AI 作业导入通过云函数直接调用 TokenHub 多模态模型，以 `glm-5.3-flash` 作为默认候选，并保持可测试、可限额、可关闭和可回滚。
 
 ## 范围
 
@@ -23,7 +23,7 @@
 
 `homework-import` 页面继续使用服务端签发的临时上传凭据。`ai` 云函数下载并校验图片后，把统一的多模态消息交给供应商适配层：
 
-- `tokenhub`：固定调用 TokenHub 官方 Chat Completions HTTPS 端点。`qwen3.5-flash` 关闭思考并请求严格 JSON Schema；`glm-5.3-flash` 使用低推理强度和 JSON 对象输出。
+- `tokenhub`：固定调用 TokenHub 官方 Chat Completions HTTPS 端点。`glm-5.3-flash` 使用低推理强度和 JSON 对象输出；已于 2026 年 9 月 8 日下线的 `qwen3.5-flash` 不进入运行时白名单。
 - `cloudbase`：沿用 `@cloudbase/node-sdk` 托管模型调用，作为显式配置的回滚通道。
 
 两条通道返回统一响应，再进入既有的截断检查、JSON 解析、字段白名单、科目匹配和人工确认流程。

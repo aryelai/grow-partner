@@ -39,22 +39,22 @@ test("旧版 CloudBase 配置仅在模型和合法每日额度同时存在时启
 test("TokenHub 配置要求受支持模型、每日额度和服务端密钥同时有效", () => {
   assert.deepEqual(parseAiConfiguration({
     AI_PROVIDER: "tokenhub",
-    AI_MODEL: " qwen3.5-flash ",
+    AI_MODEL: " glm-5.3-flash ",
     AI_DAILY_LIMIT: "12",
     TOKENHUB_API_KEY: ` ${testTokenHubKey} `,
   }), {
     enabled: true,
     provider: "tokenhub",
-    model: "qwen3.5-flash",
+    model: "glm-5.3-flash",
     dailyLimit: 12,
     apiKey: testTokenHubKey,
   });
   for (const environment of [
-    { AI_PROVIDER: "tokenhub", AI_MODEL: "qwen3.5-flash", AI_DAILY_LIMIT: "12" },
-    { AI_PROVIDER: "tokenhub", AI_MODEL: "unknown-model", AI_DAILY_LIMIT: "12", TOKENHUB_API_KEY: testTokenHubKey },
-    { AI_PROVIDER: "other", AI_MODEL: "qwen3.5-flash", AI_DAILY_LIMIT: "12", TOKENHUB_API_KEY: testTokenHubKey },
-    { AI_PROVIDER: "tokenhub", AI_MODEL: "qwen3.5-flash", AI_DAILY_LIMIT: "12", TOKENHUB_API_KEY: "short" },
-    { AI_PROVIDER: "tokenhub", AI_MODEL: "qwen3.5-flash", AI_DAILY_LIMIT: "12", TOKENHUB_API_KEY: "test-key-with\n-control-character" },
+    { AI_PROVIDER: "tokenhub", AI_MODEL: "glm-5.3-flash", AI_DAILY_LIMIT: "12" },
+    { AI_PROVIDER: "tokenhub", AI_MODEL: "qwen3.5-flash", AI_DAILY_LIMIT: "12", TOKENHUB_API_KEY: testTokenHubKey },
+    { AI_PROVIDER: "other", AI_MODEL: "glm-5.3-flash", AI_DAILY_LIMIT: "12", TOKENHUB_API_KEY: testTokenHubKey },
+    { AI_PROVIDER: "tokenhub", AI_MODEL: "glm-5.3-flash", AI_DAILY_LIMIT: "12", TOKENHUB_API_KEY: "short" },
+    { AI_PROVIDER: "tokenhub", AI_MODEL: "glm-5.3-flash", AI_DAILY_LIMIT: "12", TOKENHUB_API_KEY: "test-key-with\n-control-character" },
   ]) assert.equal(parseAiConfiguration(environment).enabled, false);
 });
 

@@ -6,7 +6,7 @@ const MAX_SUBJECTS = 50;
 const MAX_DRAFTS = 60;
 const MAX_MODEL_OUTPUT_BYTES = 100 * 1024;
 const MODEL_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
-const TOKENHUB_MODELS = new Set(["qwen3.5-flash", "glm-5.3-flash"]);
+const TOKENHUB_MODELS = new Set(["glm-5.3-flash"]);
 const TOKENHUB_API_KEY_PATTERN = /^[\x21-\x7e]{20,512}$/;
 const IMPORT_SCOPES = new Set([
   "auto",

@@ -201,13 +201,13 @@ test("公开状态不泄露模型、额度和身份配置", async () => {
   const tokenHubKey = ["test", "tokenhub", "key", "1234567890"].join("-");
   const tokenHubFixture = createFixture({ environment: {
     AI_PROVIDER: "tokenhub",
-    AI_MODEL: "qwen3.5-flash",
+    AI_MODEL: "glm-5.3-flash",
     AI_DAILY_LIMIT: "2",
     TOKENHUB_API_KEY: tokenHubKey,
   } });
   const tokenHubStatus = JSON.stringify(await tokenHubFixture.service.getStatus(testUser.openid));
   assert.equal(tokenHubStatus.includes("tokenhub"), false);
-  assert.equal(tokenHubStatus.includes("qwen"), false);
+  assert.equal(tokenHubStatus.includes("glm-5.3-flash"), false);
   assert.equal(tokenHubStatus.includes(tokenHubKey), false);
 });
 
