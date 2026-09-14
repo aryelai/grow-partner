@@ -9,3 +9,8 @@
 .switch-row { display: flex; align-items: center; justify-content: space-between; min-height: 88rpx; padding: 8rpx 0; border-top: 2rpx solid var(--border); box-sizing: border-box; }
 .security-tip { padding: 18rpx; border-radius: 12rpx; color: var(--text-light); background: #F8F9FB; font-size: 22rpx; line-height: 1.6; }
 .save { margin-top: 24rpx; }.about { padding: 40rpx; text-align: center; color: var(--text-light); font-size: 22rpx; }
+.guest-feature { display: flex; align-items: center; gap: 22rpx; min-height: 112rpx; padding: 14rpx 0; border-bottom: 2rpx solid var(--border); box-sizing: border-box; }
+.guest-feature:last-child { border-bottom: 0; }
+.guest-feature-icon { flex: 0 0 68rpx; width: 68rpx; height: 68rpx; border-radius: 20rpx; color: var(--primary); background: var(--primary-light); font-size: 28rpx; font-weight: 700; line-height: 68rpx; text-align: center; }
+.guest-feature-title { margin-bottom: 6rpx; font-size: 28rpx; font-weight: 600; }
+.guest-feature-detail, .guest-note { color: var(--text-light); font-size: 24rpx; line-height: 1.65; }

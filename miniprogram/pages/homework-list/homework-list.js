@@ -5,6 +5,7 @@ const { getAdjacentSemester, formatDateTime } = require("../../utils/date");
 const { sortHomework } = require("../../utils/homework");
 const { canPerform } = require("../../utils/permissions");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
+const { GUEST_SEMESTER_LABEL, createGuestHomeworkItems, requestFamilyAccess } = require("../../utils/guest-experience");
 
 const RELATION_NAMES = {
   father: "爸爸", mother: "妈妈", grandpa_paternal: "爷爷", grandma_paternal: "奶奶",
@@ -32,20 +33,22 @@ Page({
     canUseImport: false,
     canImport: false,
     importBlockedReason: "",
+    guestMode: false,
   },
 
   async onShow() {
     let session;
     try {
-      session = await requireFamily();
+      session = await requireFamily({ redirect: false });
     } catch (error) {
-      this.currentUser = null;
-      this.setData({ canManage: false, canUseImport: false, canImport: false, importBlockedReason: "" });
+      console.error("Load homework session failed", { message: error.message });
+      this.enterGuestMode();
       showError(error, "身份校验失败，请稍后重试");
       return;
     }
-    if (!session) { this.currentUser = null; this.setData({ canManage: false, canUseImport: false, canImport: false, importBlockedReason: "" }); return; }
+    if (!session) { this.enterGuestMode(); return; }
     this.currentUser = session.user;
+    this.guestCompletionState = null;
     const family = session.family;
     let subjectList = DEFAULT_SUBJECTS[family.educationStage] || DEFAULT_SUBJECTS.junior_high;
     try {
@@ -63,6 +66,7 @@ Page({
       canUseImport,
       canImport: false,
       importBlockedReason: canUseImport ? "正在检查 AI 导入状态" : "",
+      guestMode: false,
     });
     const homeworkLoad = this.load(true);
     let canImport = false;
@@ -81,6 +85,24 @@ Page({
     await homeworkLoad;
   },
 
+  enterGuestMode() {
+    this.currentUser = null;
+    if (!this.guestCompletionState) this.guestCompletionState = Object.create(null);
+    this.setData({
+      semester: GUEST_SEMESTER_LABEL,
+      subjects: ["全部", "语文", "数学", "英语"],
+      selectedSubject: "全部",
+      status: "pending",
+      keyword: "",
+      canManage: false,
+      canUseImport: false,
+      canImport: false,
+      importBlockedReason: "",
+      guestMode: true,
+    });
+    this.load(true);
+  },
+
   onPullDownRefresh() {
     this.load(true).finally(() => wx.stopPullDownRefresh());
   },
@@ -91,6 +113,17 @@ Page({
 
   async load(reset) {
     if (this.data.loading && !reset) return;
+    if (this.data.guestMode) {
+      const items = createGuestHomeworkItems({
+        subject: this.data.selectedSubject,
+        status: this.data.status,
+        keyword: this.data.keyword,
+      }).map((item) => this.guestCompletionState && Object.prototype.hasOwnProperty.call(this.guestCompletionState, item._id)
+        ? { ...item, isCompleted: this.guestCompletionState[item._id] }
+        : item);
+      this.setData({ items, page: 1, hasMore: false, loading: false });
+      return;
+    }
     const page = reset ? 1 : this.data.page + 1;
     this.setData({ loading: true });
     try {
@@ -120,6 +153,7 @@ Page({
   },
 
   changeSemester(event) {
+    if (this.data.guestMode) return;
     this.setData({ semester: getAdjacentSemester(this.data.semester, Number(event.currentTarget.dataset.offset)) });
     this.load(true);
   },
@@ -131,10 +165,12 @@ Page({
     this.searchTimer = setTimeout(() => this.load(true), 300);
   },
   createHomework() {
+    if (this.data.guestMode) { requestFamilyAccess("登录后可保存并与家庭成员共享作业。", wx); return; }
     if (!canPerform(this.currentUser && this.currentUser.role, "createHomework")) { wx.showToast({ title: "孩子账号不能新增作业", icon: "none" }); return; }
     wx.navigateTo({ url: `/pages/homework-edit/homework-edit?semester=${this.data.semester}` });
   },
   importHomework() {
+    if (this.data.guestMode) { requestFamilyAccess("登录后可使用 AI 识别图片并生成作业草稿。", wx); return; }
     if (!canPerform(this.currentUser && this.currentUser.role, "importHomework")) {
       wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
       return;
@@ -149,9 +185,24 @@ Page({
     }
     wx.navigateTo({ url: `/pages/homework-import/homework-import?semester=${encodeURIComponent(this.data.semester)}` });
   },
-  openDetail(event) { wx.navigateTo({ url: `/pages/homework-detail/homework-detail?id=${event.currentTarget.dataset.id}` }); },
+  openDetail(event) {
+    if (this.data.guestMode) {
+      const item = this.data.items.find((candidate) => candidate._id === event.currentTarget.dataset.id);
+      if (!item) return;
+      wx.showModal({ title: item.title, content: `${item.subject} · ${item.createdByName}\n\n${item.content || "这是一条本地演示作业。"}`, showCancel: false, confirmText: "知道了" });
+      return;
+    }
+    wx.navigateTo({ url: `/pages/homework-detail/homework-detail?id=${event.currentTarget.dataset.id}` });
+  },
   previewImage(event) { wx.previewImage({ current: event.currentTarget.dataset.url, urls: event.currentTarget.dataset.urls }); },
   async toggleCompleted(event) {
+    if (this.data.guestMode) {
+      const id = event.currentTarget.dataset.id;
+      const isCompleted = !event.currentTarget.dataset.completed;
+      this.guestCompletionState[id] = isCompleted;
+      this.setData({ items: this.data.items.map((item) => item._id === id ? { ...item, isCompleted } : item) });
+      return;
+    }
     try {
       await callFunction("homework", "toggleCompleted", { id: event.currentTarget.dataset.id, isCompleted: !event.currentTarget.dataset.completed });
       await this.load(true);

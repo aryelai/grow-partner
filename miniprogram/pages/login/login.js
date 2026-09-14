@@ -62,6 +62,10 @@ Page({
     return this.refreshProfile();
   },
 
+  continueExperience() {
+    wx.switchTab({ url: "/pages/homework-list/homework-list" });
+  },
+
   onNicknameInput(event) {
     this.setData({ nickname: event.detail.value });
   },
@@ -76,7 +80,7 @@ Page({
       return;
     }
     if (!this.data.nickname.trim()) {
-      wx.showToast({ title: "请先填写昵称", icon: "none" });
+      wx.showToast({ title: "请先填写家庭称呼", icon: "none" });
       return;
     }
     const inviteCode = normalizeInviteCode(this.data.inviteCode);

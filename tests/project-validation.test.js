@@ -160,6 +160,32 @@ test("页面数量漂移会使项目静态校验失败", () => {
   }, (result) => assertValidationFailure(result, /页面数量应为17个/));
 });
 
+test("登录页恢复为默认首屏会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const appConfigPath = path.join(temporaryRoot, "miniprogram/app.json");
+    const appConfig = JSON.parse(fs.readFileSync(appConfigPath, "utf8"));
+    const loginIndex = appConfig.pages.indexOf("pages/login/login");
+    [appConfig.pages[0], appConfig.pages[loginIndex]] = [appConfig.pages[loginIndex], appConfig.pages[0]];
+    fs.writeFileSync(appConfigPath, JSON.stringify(appConfig));
+  }, (result) => assertValidationFailure(result, /默认首屏必须允许游客浏览作业演示/));
+});
+
+test("登录页恢复微信昵称授权输入会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const loginPath = path.join(temporaryRoot, "miniprogram/pages/login/login.wxml");
+    const source = fs.readFileSync(loginPath, "utf8");
+    fs.writeFileSync(loginPath, source.replace('class="input nickname-input"', 'class="input nickname-input" type="nickname"'));
+  }, (result) => assertValidationFailure(result, /运行时代码不得在浏览前请求手机号、微信头像或微信昵称授权/));
+});
+
+test("核心页面移除游客模式会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const pagePath = path.join(temporaryRoot, "miniprogram/pages/homework-list/homework-list.js");
+    const source = fs.readFileSync(pagePath, "utf8");
+    fs.writeFileSync(pagePath, source.replace("requireFamily({ redirect: false })", "requireFamily()"));
+  }, (result) => assertValidationFailure(result, /核心页面缺少游客模式：homework-list/));
+});
+
 test("AI 作业导入页未注册会使项目静态校验失败", () => {
   withProjectCopy((temporaryRoot) => {
     const appConfigPath = path.join(temporaryRoot, "miniprogram/app.json");

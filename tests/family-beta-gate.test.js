@@ -294,7 +294,6 @@ test("登录状态查询失败时显示可重试故障而不是注册关闭", as
 
 test("家庭内测版只为 AI 作业导入开放临时截图选择", () => {
   const pageFiles = [
-    "miniprogram/pages/login/login.wxml",
     "miniprogram/pages/homework-edit/homework-edit.wxml",
     "miniprogram/pages/notice-edit/notice-edit.wxml",
     "miniprogram/pages/habit-detail/habit-detail.wxml",

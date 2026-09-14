@@ -1,4 +1,19 @@
-<view class="page settings-page" wx:if="{{family}}">
+<view class="page settings-page guest-settings" wx:if="{{guestMode}}">
+  <guest-banner />
+  <view class="card guest-feature-card">
+    <view class="section-title">成长搭档可以做什么</view>
+    <view class="guest-feature"><text class="guest-feature-icon">作</text><view><view class="guest-feature-title">集中登记作业</view><view class="guest-feature-detail">按科目和完成状态筛选，减少遗漏。</view></view></view>
+    <view class="guest-feature"><text class="guest-feature-icon">告</text><view><view class="guest-feature-title">整理学校通知</view><view class="guest-feature-detail">记录通知内容与提醒时间，方便家庭协作。</view></view></view>
+    <view class="guest-feature"><text class="guest-feature-icon">习</text><view><view class="guest-feature-title">跟踪习惯与计划</view><view class="guest-feature-detail">用打卡和计划持续记录孩子的成长过程。</view></view></view>
+  </view>
+  <view class="card guest-note-card">
+    <view class="section-title">游客体验说明</view>
+    <view class="guest-note">当前内容均为本地虚构示例，不读取微信昵称、头像、手机号或任何家庭数据，也不会把体验操作保存到云端。</view>
+  </view>
+  <view class="about">成长搭档 v1.0.2</view>
+</view>
+
+<view class="page settings-page" wx:elif="{{family}}">
   <view class="card family-card">
     <view class="card-heading"><view><view class="child-name">{{family.childName}}<text wx:if="{{family.childNickname}}" class="nickname">（{{family.childNickname}}）</text></view><view class="muted">{{stageName}} {{family.grade}}年级 · {{family.className || '未填写班级'}}</view><view class="muted birthday">生日：{{birthdayText}}</view></view><button wx:if="{{isCreator}}" size="mini" class="ghost-button" bindtap="editFamily">编辑</button></view>
     <view class="invite-row" wx:if="{{isCreator && inviteCodeText}}"><view><text class="field-label">家庭邀请码</text><text class="invite-code">{{inviteCodeText}}</text></view><button size="mini" class="ghost-button" bindtap="copyInviteCode">复制</button></view>
@@ -24,5 +39,5 @@
     <view class="security-tip">API Key 不在小程序端录入或回显；正式启用时应通过云环境安全配置注入。</view>
   </view>
   <button class="primary-button save" loading="{{saving}}" disabled="{{saving || !canEditSettings}}" bindtap="save">保存设置</button>
-  <view class="about">成长搭档 v1.0.0</view>
+  <view class="about">成长搭档 v1.0.2</view>
 </view>

@@ -1,11 +1,11 @@
 {
   "pages": [
-    "pages/login/login",
     "pages/homework-list/homework-list",
     "pages/notice-list/notice-list",
     "pages/habit-list/habit-list",
     "pages/plan-list/plan-list",
     "pages/settings/settings",
+    "pages/login/login",
     "pages/family-create/family-create",
     "pages/family-join/family-join",
     "pages/family-members/family-members",
@@ -18,6 +18,9 @@
     "pages/plan-edit/plan-edit",
     "pages/subject-settings/subject-settings"
   ],
+  "usingComponents": {
+    "guest-banner": "/components/guest-banner/guest-banner"
+  },
   "window": {
     "navigationBarTitleText": "成长搭档",
     "navigationBarBackgroundColor": "#4A90D9",

@@ -1,9 +1,10 @@
 <view class="page homework-page">
+  <guest-banner wx:if="{{guestMode}}" />
   <view class="filter-panel">
     <view class="semester-switcher">
-      <button class="semester-arrow" data-offset="-1" bindtap="changeSemester">‹</button>
+      <button class="semester-arrow" data-offset="-1" bindtap="changeSemester" disabled="{{guestMode}}">‹</button>
       <view class="semester-value">{{semester}}</view>
-      <button class="semester-arrow" data-offset="1" bindtap="changeSemester">›</button>
+      <button class="semester-arrow" data-offset="1" bindtap="changeSemester" disabled="{{guestMode}}">›</button>
     </view>
     <scroll-view class="subject-scroll" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
       <view class="subject-row">

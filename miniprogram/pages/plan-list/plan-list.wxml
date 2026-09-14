@@ -1,4 +1,5 @@
 <view class="page plan-page">
+  <guest-banner wx:if="{{guestMode}}" />
   <view class="view-tabs"><view wx:for="{{types}}" wx:key="value" class="view-tab {{type === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectType">{{item.label}}计划</view></view>
   <view class="date-nav"><button data-offset="-1" bindtap="shiftDate">‹</button><view><view class="date-label">{{rangeLabel}}</view><view class="completion">完成率 {{completionRate}}%</view></view><button data-offset="1" bindtap="shiftDate">›</button></view>
   <view class="card plan-card" wx:for="{{items}}" wx:for-item="plan" wx:key="_id">

@@ -1,12 +1,13 @@
 .homework-page { padding-top: 0; }
 .filter-panel { position: sticky; top: 0; z-index: 5; margin: 0 -24rpx 24rpx; padding: 18rpx 24rpx 24rpx; background: rgba(245, 246, 250, 0.96); }
 .semester-switcher { display: flex; align-items: center; justify-content: center; margin-bottom: 18rpx; }
-.semester-arrow { width: 80rpx; height: 64rpx; padding: 0; color: var(--primary); background: transparent; font-size: 52rpx; line-height: 58rpx; }
+.semester-arrow { width: 88rpx; height: 88rpx; padding: 0; color: var(--primary); background: transparent; font-size: 52rpx; line-height: 84rpx; }
+.semester-arrow[disabled] { color: var(--gray); opacity: 0.55; }
 .semester-value { min-width: 180rpx; text-align: center; font-size: 34rpx; font-weight: 600; }
 .subject-scroll { width: 100%; white-space: nowrap; }
 .subject-row { display: inline-flex; padding-bottom: 8rpx; }
 .status-row { display: flex; margin: 12rpx 0; padding: 6rpx; border-radius: 16rpx; background: #E8ECF1; }
-.status-item { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 72rpx; padding: 0 14rpx; border-radius: 12rpx; box-sizing: border-box; text-align: center; color: var(--text-light); }
+.status-item { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 88rpx; padding: 0 14rpx; border-radius: 12rpx; box-sizing: border-box; text-align: center; color: var(--text-light); }
 .status-item.active { color: var(--primary); background: #fff; font-weight: 600; box-shadow: 0 2rpx 8rpx rgba(44, 62, 80, 0.08); }
 .search-box { display: flex; align-items: center; height: 88rpx; padding: 0 22rpx; border: 2rpx solid var(--border); border-radius: 14rpx; box-sizing: border-box; background: #fff; color: var(--gray); }
 .search-input { flex: 1; height: 84rpx; margin-left: 14rpx; }
@@ -26,7 +27,7 @@
 .card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 22rpx; padding-top: 18rpx; border-top: 2rpx solid var(--border); }
 .state { color: var(--warning); }
 .state.done { color: var(--success); }
-.toggle-button { color: var(--primary); background: var(--primary-light); }
+.toggle-button { display: flex; align-items: center; justify-content: center; min-width: 176rpx; min-height: 88rpx; padding: 0 20rpx; color: var(--primary); background: var(--primary-light); box-sizing: border-box; }
 .load-more { padding: 24rpx; color: var(--text-light); text-align: center; font-size: 22rpx; }
-.ai-import-button { position: fixed; right: 152rpx; bottom: 166rpx; z-index: 6; height: 64rpx; padding: 0 26rpx; border-radius: 32rpx; color: var(--primary); background: #fff; font-size: 25rpx; line-height: 64rpx; box-shadow: 0 8rpx 24rpx rgba(44, 62, 80, 0.16); }
+.ai-import-button { position: fixed; right: 152rpx; bottom: calc(154rpx + env(safe-area-inset-bottom)); z-index: 6; height: 88rpx; padding: 0 28rpx; border-radius: 44rpx; color: var(--primary); background: #fff; font-size: 25rpx; line-height: 88rpx; box-shadow: 0 8rpx 24rpx rgba(44, 62, 80, 0.16); }
 .ai-import-button.unavailable { color: var(--text-light); background: #F3F5F7; box-shadow: 0 6rpx 18rpx rgba(44, 62, 80, 0.1); }

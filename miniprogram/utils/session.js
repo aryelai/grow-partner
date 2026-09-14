@@ -8,18 +8,19 @@ async function loadSession() {
   return data;
 }
 
-async function requireFamily() {
+async function requireFamily(options = {}) {
+  const shouldRedirect = options.redirect !== false;
   const data = await loadSession();
   if (!data.registered) {
-    wx.reLaunch({ url: "/pages/login/login" });
+    if (shouldRedirect) wx.reLaunch({ url: "/pages/login/login" });
     return null;
   }
   if (!data.user || !data.user.familyId) {
-    wx.reLaunch({ url: "/pages/login/login?step=family" });
+    if (shouldRedirect) wx.reLaunch({ url: "/pages/login/login?step=family" });
     return null;
   }
   if (!data.family) {
-    wx.showToast({ title: "家庭数据异常，请联系创建者", icon: "none" });
+    if (shouldRedirect) wx.showToast({ title: "家庭数据异常，请联系创建者", icon: "none" });
     return null;
   }
   return data;

@@ -1,4 +1,5 @@
 <view class="page notice-page">
+  <guest-banner wx:if="{{guestMode}}" />
   <scroll-view scroll-x="{{true}}" class="category-scroll"><view class="category-row"><view wx:for="{{categories}}" wx:key="value" class="tag {{category === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</view></view></scroll-view>
   <view class="search-box">⌕<input placeholder="搜索通知标题" value="{{keyword}}" bindinput="onSearchInput" /></view>
   <view class="card notice-card" wx:for="{{items}}" wx:key="_id" data-id="{{item._id}}" bindtap="view">

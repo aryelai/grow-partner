@@ -135,6 +135,7 @@ function createNoticePage(sourceName, overrides = {}) {
       if (request === "../../utils/permissions") return { canPerform: (role, action) => role !== "child" && action === "manageNotice" };
       if (request === "../../utils/subscription") return subscription;
       if (request === "../../utils/share") return require("../miniprogram/utils/share");
+      if (request === "../../utils/guest-experience") return require("../miniprogram/utils/guest-experience");
       throw new Error(`测试未实现依赖：${request}`);
     },
   });

@@ -1,0 +1,8 @@
+<view class="guest-banner">
+  <view class="guest-copy">
+    <view class="guest-label"><text class="guest-dot"></text>游客演示</view>
+    <view class="guest-title">先体验，再决定是否使用</view>
+    <view class="guest-description">当前展示本地示例数据，不会读取或保存你的家庭信息。</view>
+  </view>
+  <button class="guest-action" hover-class="guest-action-pressed" bindtap="goToLogin">使用我的家庭</button>
+</view>

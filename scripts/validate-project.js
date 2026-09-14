@@ -41,6 +41,7 @@ for (const file of [...files.filter((item) => item.endsWith(".json")), path.join
 
 const appConfig = JSON.parse(fs.readFileSync(path.join(projectRoot, "miniprogram/app.json"), "utf8"));
 if (appConfig.pages.length !== expectedPageCount) errors.push(`页面数量应为${expectedPageCount}个`);
+if (appConfig.pages[0] !== "pages/homework-list/homework-list") errors.push("默认首屏必须允许游客浏览作业演示");
 if (!appConfig.pages.includes("pages/notice-detail/notice-detail")) errors.push("通知详情页未在 app.json 注册");
 if (!appConfig.pages.includes("pages/homework-import/homework-import")) errors.push("AI 作业导入页未在 app.json 注册");
 if (new Set(appConfig.pages).size !== appConfig.pages.length) errors.push("app.json 存在重复页面配置");
@@ -148,6 +149,26 @@ if (/\bsk-[A-Za-z0-9_-]{16,}\b/.test(sourceText)) errors.push("检测到疑似�
 if (/apiKey\s*[:=]\s*["'][^"']{8,}["']/.test(sourceText)) errors.push("检测到疑似硬编码 aiApiKey");
 if (/["']?(?:appSecret|app_secret|APP_SECRET)["']?\s*[:=]\s*["'][^"']{8,}["']/i.test(sourceText)) errors.push("检测到疑似硬编码 AppSecret");
 if (/wx\.cloud\.uploadFile\s*\(/.test(runtimeSourceText)) errors.push("家庭内测版运行时代码不得直接上传云存储文件");
+if (/getPhoneNumber|open-type=["']chooseAvatar["']|type=["']nickname["']/.test(runtimeSourceText)) {
+  errors.push("运行时代码不得在浏览前请求手机号、微信头像或微信昵称授权");
+}
+const guestPagePaths = ["homework-list", "notice-list", "habit-list", "plan-list", "settings"];
+for (const pageName of guestPagePaths) {
+  const pageBase = path.join(projectRoot, "miniprogram/pages", pageName, pageName);
+  const script = fs.readFileSync(`${pageBase}.js`, "utf8");
+  const template = fs.readFileSync(`${pageBase}.wxml`, "utf8");
+  if (!script.includes("requireFamily({ redirect: false })") || !script.includes("guestMode")) {
+    errors.push(`核心页面缺少游客模式：${pageName}`);
+  }
+  if (!template.includes("guest-banner")) errors.push(`核心页面缺少游客提示：${pageName}`);
+}
+const loginTemplate = fs.readFileSync(path.join(projectRoot, "miniprogram/pages/login/login.wxml"), "utf8");
+const loginScript = fs.readFileSync(path.join(projectRoot, "miniprogram/pages/login/login.js"), "utf8");
+if (!loginTemplate.includes('bindtap="continueExperience"') || !loginScript.includes("continueExperience()")) {
+  errors.push("登录页缺少继续体验出口");
+}
+const shareScript = fs.readFileSync(path.join(projectRoot, "miniprogram/utils/share.js"), "utf8");
+if (!shareScript.includes('path: "/pages/homework-list/homework-list"')) errors.push("分享入口必须落到游客可浏览首页");
 const mediaSelectionFiles = runtimeFiles.filter((item) => item.endsWith(".js") && /wx\.chooseMedia\s*\(/.test(fs.readFileSync(item, "utf8")));
 const allowedMediaSelectionFile = path.join(projectRoot, "miniprogram/pages/homework-import/homework-import.js");
 const mediaSelectionCallCount = fs.existsSync(allowedMediaSelectionFile)

@@ -5,7 +5,7 @@ const SHARE_TIMELINE_IMAGE_URL = "/images/share-timeline.png";
 function createShareAppMessage() {
   return {
     title: SHARE_TITLE,
-    path: "/pages/login/login",
+    path: "/pages/homework-list/homework-list",
     imageUrl: SHARE_CARD_IMAGE_URL,
   };
 }

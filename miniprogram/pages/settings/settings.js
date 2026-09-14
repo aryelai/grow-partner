@@ -57,8 +57,24 @@ Page({
   onShareAppMessage: createShareAppMessage,
   onShareTimeline: createShareTimelineMessage,
 
-  data: { family: null, settings: {}, stageName: "", birthdayText: "", inviteCodeText: "", isCreator: false, canEditSettings: false, providerLabels: providers.map((item) => item.label), providerIndex: 0, advanceDay: true, advanceHours: false, targetFather: true, targetMother: true, targetChild: false, reminderStatus: null, reminderStatusText: "", reminderStatusDetail: "", loadingReminderStatus: false, subscribing: false, saving: false },
-  async onShow() { const session = await requireFamily(); if (!session) return; await this.load(); },
+  data: { family: null, settings: {}, stageName: "", birthdayText: "", inviteCodeText: "", isCreator: false, canEditSettings: false, providerLabels: providers.map((item) => item.label), providerIndex: 0, advanceDay: true, advanceHours: false, targetFather: true, targetMother: true, targetChild: false, reminderStatus: null, reminderStatusText: "", reminderStatusDetail: "", loadingReminderStatus: false, subscribing: false, saving: false, guestMode: false },
+  async onShow() {
+    let session;
+    try {
+      session = await requireFamily({ redirect: false });
+    } catch (error) {
+      console.error("Load settings session failed", getErrorContext(error));
+      this.enterGuestMode();
+      showError(error, "身份校验失败，请稍后重试");
+      return;
+    }
+    if (!session) { this.enterGuestMode(); return; }
+    this.setData({ guestMode: false });
+    await this.load();
+  },
+  enterGuestMode() {
+    this.setData({ family: null, settings: {}, reminderStatus: null, isCreator: false, canEditSettings: false, guestMode: true });
+  },
   async load() {
     try {
       const settingsRequest = callFunction("settings", "get");
@@ -73,7 +89,7 @@ Page({
       const settings = data.settings;
       const isCreator = data.currentRole === "creator";
       const reminderPresentation = getReminderStatusPresentation(reminderStatus);
-      this.setData({ family: data.family, settings, reminderStatus, reminderStatusText: reminderPresentation.text, reminderStatusDetail: reminderPresentation.detail, stageName: (EDUCATION_STAGES.find((item) => item.value === data.family.educationStage) || {}).label || data.family.educationStage, birthdayText: formatDate(data.family.childBirthday), inviteCodeText: formatInviteCode(data.family.inviteCode || ""), isCreator, canEditSettings: isCreator || (data.currentRole === "member" && settings.allowMemberEditSettings), providerIndex: Math.max(0, providers.findIndex((item) => item.value === settings.aiProvider)), advanceDay: settings.reminderDefaultAdvance.includes(1440), advanceHours: settings.reminderDefaultAdvance.includes(120), targetFather: settings.reminderTargets.includes("father"), targetMother: settings.reminderTargets.includes("mother"), targetChild: settings.reminderTargets.includes("child") });
+      this.setData({ family: data.family, settings, reminderStatus, reminderStatusText: reminderPresentation.text, reminderStatusDetail: reminderPresentation.detail, stageName: (EDUCATION_STAGES.find((item) => item.value === data.family.educationStage) || {}).label || data.family.educationStage, birthdayText: formatDate(data.family.childBirthday), inviteCodeText: formatInviteCode(data.family.inviteCode || ""), isCreator, canEditSettings: isCreator || (data.currentRole === "member" && settings.allowMemberEditSettings), providerIndex: Math.max(0, providers.findIndex((item) => item.value === settings.aiProvider)), advanceDay: settings.reminderDefaultAdvance.includes(1440), advanceHours: settings.reminderDefaultAdvance.includes(120), targetFather: settings.reminderTargets.includes("father"), targetMother: settings.reminderTargets.includes("mother"), targetChild: settings.reminderTargets.includes("child"), guestMode: false });
     } catch (error) { showError(error, "设置加载失败"); }
   },
   goMembers() { wx.navigateTo({ url: "/pages/family-members/family-members" }); },
