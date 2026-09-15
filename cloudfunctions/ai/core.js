@@ -39,7 +39,8 @@ const SOURCE_TYPE_LABELS = {
   chat: "聊天记录",
   unknown: "未知版式",
 };
-const UNCERTAIN_FIELDS = new Set(["subject", "title", "content", "extraRequirement", "deadline"]);
+const UNCERTAIN_FIELDS = new Set(["subject", "title", "content", "extraRequirement", "homeworkDate", "deadline"]);
+const WEEKDAY_OFFSETS = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday_weekend: 4 };
 const MIME_EXTENSIONS = new Map([
   ["image/jpeg", "jpg"],
   ["image/png", "png"],
@@ -170,6 +171,21 @@ function getSummaryScopeLabel(sourceType, importScope, detectedScope) {
     : "最新有效列";
 }
 
+function hasMultipleListMarkers(value) {
+  const matches = String(value).match(/(?:^|\n)\s*(?:\d{1,2}[.、）)]|[一二三四五六七八九十]+[.、）)])/g);
+  return Array.isArray(matches) && matches.length >= 2;
+}
+
+function containsOtherSubjectLabel(value, currentSubject, subjects) {
+  return subjects.some((subject) => {
+    if (subject === currentSubject) return false;
+    const escaped = subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?:^|\\n)\\s*${escaped}(?:\\s|[:：])`).test(value)
+      || value.includes(`${subject}：`)
+      || value.includes(`${subject}:`);
+  });
+}
+
 function normalizeModelDrafts(payload, context = {}) {
   if (!payload || !Array.isArray(payload.drafts)) throw new Error("INVALID_MODEL_STRUCTURE");
   const semester = /^\d{4}(上|下)$/.test(context.semester) ? context.semester : "";
@@ -181,6 +197,8 @@ function normalizeModelDrafts(payload, context = {}) {
   const sourceType = typeof payload.sourceType === "string" && Object.hasOwn(SOURCE_TYPE_LABELS, payload.sourceType)
     ? payload.sourceType : "unknown";
   const importScope = validateImportScope(context.importScope);
+  const date = context.date === undefined ? getBeijingDate(new Date()) : context.date;
+  if (!isValidHomeworkDate(date)) throw new Error("INVALID_DATE");
   const detectedScope = typeof payload.detectedScope === "string" ? payload.detectedScope : "";
   const summary = {
     sourceType,
@@ -194,19 +212,39 @@ function normalizeModelDrafts(payload, context = {}) {
       warnings.push("部分识别结果格式异常，已忽略");
       continue;
     }
-    const title = cleanText(candidate.title, 50);
+    let title = typeof candidate.title === "string" ? candidate.title.trim() : "";
     if (!title) {
       warnings.push("部分识别结果缺少主题，已忽略");
       continue;
     }
     const rawSubject = cleanText(candidate.subject, 20);
     const subject = validSubjects.has(rawSubject) ? rawSubject : "";
+    // 兼容模型把原文拆进其他字段的响应，不截断或丢弃识别内容。
+    for (const field of ["content", "extraRequirement"]) {
+      const text = typeof candidate[field] === "string" ? candidate[field].trim() : "";
+      if (text && !title.includes(text)) title += `\n${text}`;
+    }
     const uncertainFields = new Set(Array.isArray(candidate.uncertainFields)
       ? candidate.uncertainFields.filter((field) => typeof field === "string" && UNCERTAIN_FIELDS.has(field))
       : []);
+    if (uncertainFields.has("content") || uncertainFields.has("extraRequirement")) uncertainFields.add("title");
+    uncertainFields.delete("content");
+    uncertainFields.delete("extraRequirement");
+    if (title.length > 500) {
+      warnings.push("部分主题超过500字，已保留完整原文，请精简或拆分后保存");
+      uncertainFields.add("title");
+    }
     if (!subject) {
       warnings.push(`“${title}”的科目无法匹配，请手动选择`);
       uncertainFields.add("subject");
+    }
+    const combinedText = [candidate.title, candidate.content, candidate.extraRequirement]
+      .filter((value) => typeof value === "string" && value)
+      .join("\n");
+    if (hasMultipleListMarkers(combinedText)
+      || containsOtherSubjectLabel(combinedText, rawSubject, subjects)) {
+      warnings.push(`“${title}”可能合并了多条或多个科目，请拆分并核对`);
+      uncertainFields.add("title");
     }
 
     let deadline = "";
@@ -225,12 +263,40 @@ function normalizeModelDrafts(payload, context = {}) {
       uncertainFields.add("deadline");
     }
 
+    const sourceWeekday = DETECTED_WEEKDAY_SCOPES.has(candidate.sourceWeekday) ? candidate.sourceWeekday : "";
+    let homeworkDate = date;
+    let dateSource = "default_today";
+    if (candidate.homeworkDateExplicit === true && isValidHomeworkDate(candidate.homeworkDate)) {
+      homeworkDate = candidate.homeworkDate;
+      dateSource = "explicit";
+    } else {
+      if (sourceType === "weekly_table") {
+        const weekday = DETECTED_WEEKDAY_SCOPES.has(importScope) ? importScope
+          : sourceWeekday || (importScope === "auto" && DETECTED_WEEKDAY_SCOPES.has(detectedScope) ? detectedScope : "");
+        if (weekday) {
+          homeworkDate = inferWeekdayDate(date, weekday);
+          dateSource = "inferred_week";
+          warnings.push("周表作业日期按本周星期推测（星期五/周末默认本周五），保存前请核对或修改");
+        } else {
+          warnings.push("部分周表作业无法确认星期，作业日期暂设为今天，请手动核对");
+        }
+        uncertainFields.add("homeworkDate");
+      }
+      if (candidate.homeworkDate) {
+        uncertainFields.add("homeworkDate");
+        warnings.push("部分作业日期不是明确有效日期，已使用默认值，请核对");
+      }
+    }
+
     drafts.push({
       semester,
       subject,
       title,
-      content: cleanText(candidate.content, 2000),
-      extraRequirement: cleanText(candidate.extraRequirement, 100),
+      content: "",
+      extraRequirement: "",
+      homeworkDate,
+      dateSource,
+      sourceWeekday,
       hasDeadline,
       deadline,
       uncertainFields: [...uncertainFields],
@@ -241,6 +307,19 @@ function normalizeModelDrafts(payload, context = {}) {
   }
   if (!drafts.length) throw new Error("NO_VALID_DRAFTS");
   return { drafts, warnings: [...new Set(warnings)], summary };
+}
+
+function isValidHomeworkDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function inferWeekdayDate(date, weekday) {
+  // 北京时间日历已由入口确定，这里使用 UTC 日历运算避免云函数运行时区影响。
+  const start = new Date(`${date}T00:00:00.000Z`);
+  start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7) + WEEKDAY_OFFSETS[weekday]);
+  return start.toISOString().slice(0, 10);
 }
 
 function buildRecognitionPrompt(context = {}) {
@@ -261,14 +340,20 @@ function buildRecognitionPrompt(context = {}) {
     `服务端北京时间日期：${date}；当前学期：${semester}；可用科目：${subjects.join("、")}。`,
     "先判断整体版式：weekly_table（按科目和星期构成的周表）、daily_list（单日清单）、chat（聊天记录）或 unknown；无法可靠判断时按 unknown 提取截图中的全部作业。",
     scopeInstruction,
-    "将多张截图中连续、跨图或重复的信息合并去重，并拆分成独立作业。周表同一单元格里的编号项目应拆成独立作业。不要判断完成状态、重要程度或提醒策略。",
+    "准确性优先。先按表格单元格逐字逐符号转写原文，保留数字、英文字母、页码、范围符号、括号和书名号，例如 L3、U1、P10～P12。严禁根据语义补写、改写或纠正字迹，严禁把陌生表达替换成常见作业用语。",
+    "看不清的单个字用“□”占位，并把对应字段加入 uncertainFields；宁可标记不确定，也不要猜测。",
+    "周表必须先按印刷的科目行和星期列定位单元格；每个编号或项目符号必须生成一条独立草稿，即使位于同一单元格。禁止跨科目、跨单元格合并；空白单元格不得生成作业。",
+    "每条编号后的完整作业原文（包括括号、页码、要求）全部放入 title，最多500字，不得总结或截断。content（详细要求）和 extraRequirement 默认为空字符串，供用户手动补充，不要把原文拆进去。",
+    "多张截图只对完全重复或明确跨图延续的同一条作业进行合并去重，不得因为语义相近而合并。不要判断完成状态、重要程度或提醒策略。",
     "星期列只是登记范围，不是截止日期；禁止把星期一至星期五/周末推断成 deadline。",
+    "homeworkDate 是这条作业所属的登记日期，与截止时间独立。仅截图明确给出作业日期时填 YYYY-MM-DD 并设 homeworkDateExplicit 为 true；不要把提交、完成或携带时间当作作业日期。缺失时留空且设为 false，日期推测由服务端完成。",
+    "周表每条草稿必须填写所属列 sourceWeekday，只能为 monday、tuesday、wednesday、thursday、friday_weekend；整周导入也必须逐条区分列。非周表或无法确定列时留空。不要自行按周次猜测日期。",
     "只有作业文本明确表达某个日期或时间是截止、提交或完成时间时，才填写 deadline 并将 deadlineExplicit 设为 true。标题日期、作业日期、周次、星期和发布日期只是来源上下文，均不得作为 deadline；模糊或缺失时 deadline 设为空字符串且 deadlineExplicit 为 false。相对截止时间以上述北京时间日期为锚点。",
     "sourceType 必须是 weekly_table、daily_list、chat、unknown 之一。仅当 sourceType 为 weekly_table 且当前范围为自动判断时，detectedScope 才填写实际提取列，并且只能是 monday、tuesday、wednesday、thursday、friday_weekend 之一；其他情况填写空字符串。weekLabel 只在截图明确出现周次时填写。",
-    "每条作业的 uncertainFields 仅列出无法可靠辨认、必须人工核对的字段，可选值只有 subject、title、content、extraRequirement、deadline；不要猜测模糊字迹。",
+    "每条作业的 uncertainFields 仅列出无法可靠辨认、必须人工核对的字段，可选值只有 subject、title、content、extraRequirement、homeworkDate、deadline；不要猜测模糊字迹。",
     `最多返回 ${MAX_DRAFTS} 条作业；若原内容超过上限，只返回前 ${MAX_DRAFTS} 条并将 truncated 设为 true，否则设为 false。`,
     "只输出 JSON，不要输出解释或 Markdown。格式为：",
-    '{"sourceType":"unknown","detectedScope":"","weekLabel":"","truncated":false,"drafts":[{"subject":"","title":"","content":"","extraRequirement":"","deadlineExplicit":false,"deadline":"","uncertainFields":[]}]}',
+    '{"sourceType":"unknown","detectedScope":"","weekLabel":"","truncated":false,"drafts":[{"subject":"","title":"","content":"","extraRequirement":"","sourceWeekday":"","homeworkDateExplicit":false,"homeworkDate":"","deadlineExplicit":false,"deadline":"","uncertainFields":[]}]}',
   ].join("\n");
 }
 

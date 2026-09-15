@@ -1,8 +1,8 @@
 const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { DEFAULT_SUBJECTS, CURRENT_SEMESTER } = require("../../utils/constants");
-const { formatDate } = require("../../utils/date");
-const { validateUrl } = require("../../utils/validation");
+const { formatDate, getBeijingDate, formatHomeworkDate } = require("../../utils/date");
+const { validateUrl, validateIsoDate } = require("../../utils/validation");
 const { canPerform } = require("../../utils/permissions");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
@@ -12,7 +12,8 @@ Page({
 
   data: {
     id: "",
-    form: { semester: CURRENT_SEMESTER, subject: "", title: "", content: "", images: [], videos: [], links: [], extraRequirement: "", isImportant: false, hasDeadline: false, extraTags: [] },
+    form: { semester: CURRENT_SEMESTER, subject: "", homeworkDate: "", title: "", content: "", images: [], videos: [], links: [], extraRequirement: "", isImportant: false, hasDeadline: false, extraTags: [] },
+    homeworkDateText: "请选择作业日期",
     subjects: [],
     deadlineDate: formatDate(new Date()),
     deadlineTime: "20:00",
@@ -43,11 +44,14 @@ Page({
     } catch (error) {
       console.error("Load custom subjects failed", { message: error.message });
     }
+    const homeworkDate = options.id ? "" : getBeijingDate();
     this.setData({
       id: options.id || "",
       subjects,
       "form.semester": options.semester || session.family.currentSemester,
       "form.subject": subjects[0],
+      "form.homeworkDate": homeworkDate,
+      homeworkDateText: homeworkDate ? formatHomeworkDate(homeworkDate) : "请选择作业日期",
     });
     if (options.id) await this.loadDetail(options.id);
   },
@@ -57,7 +61,8 @@ Page({
       const item = await callFunction("homework", "get", { id });
       const deadline = item.deadline ? new Date(item.deadline) : new Date();
       this.setData({
-        form: { ...item, images: item.images || [], videos: item.videos || [], links: item.links || [], extraTags: item.extraTags || [] },
+        form: { ...item, homeworkDate: validateIsoDate(item.homeworkDate) ? item.homeworkDate : "", images: item.images || [], videos: item.videos || [], links: item.links || [], extraTags: item.extraTags || [] },
+        homeworkDateText: validateIsoDate(item.homeworkDate) ? formatHomeworkDate(item.homeworkDate) : "请选择作业日期",
         deadlineDate: formatDate(deadline),
         deadlineTime: `${String(deadline.getHours()).padStart(2, "0")}:${String(deadline.getMinutes()).padStart(2, "0")}`,
       });
@@ -67,6 +72,9 @@ Page({
   onInput(event) { this.setData({ [`form.${event.currentTarget.dataset.field}`]: event.detail.value }); },
   onSwitch(event) { this.setData({ [`form.${event.currentTarget.dataset.field}`]: event.detail.value }); },
   selectSubject(event) { this.setData({ "form.subject": event.currentTarget.dataset.value }); },
+  onHomeworkDate(event) {
+    this.setData({ "form.homeworkDate": event.detail.value, homeworkDateText: formatHomeworkDate(event.detail.value) });
+  },
   onDeadlineDate(event) { this.setData({ deadlineDate: event.detail.value }); },
   onDeadlineTime(event) { this.setData({ deadlineTime: event.detail.value }); },
   onLinkInput(event) { this.setData({ linkInput: event.detail.value }); },
@@ -97,6 +105,8 @@ Page({
       if (!await this.refreshPermission()) return;
       const form = this.data.form;
       if (!form.subject || !form.title.trim()) { wx.showToast({ title: "请选择科目并填写主题", icon: "none" }); return; }
+      if (!validateIsoDate(form.homeworkDate)) { wx.showToast({ title: "请选择正确的作业日期", icon: "none" }); return; }
+      if (form.title.trim().length > 500) { wx.showToast({ title: "主题不能超过500字", icon: "none" }); return; }
       const deadline = form.hasDeadline ? new Date(`${this.data.deadlineDate}T${this.data.deadlineTime}:00`).toISOString() : null;
       await callFunction("homework", this.data.id ? "update" : "create", { ...form, id: this.data.id, deadline });
       wx.navigateBack();

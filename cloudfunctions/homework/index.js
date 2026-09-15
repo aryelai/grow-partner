@@ -36,6 +36,12 @@ function publicHomework(value) {
   return safeValue;
 }
 
+function isValidHomeworkDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 async function requireUser(openid) {
   if (!openid) throw new Error("UNAUTHORIZED");
   const result = await db.collection("users").where({ openid }).limit(1).get();
@@ -55,8 +61,9 @@ async function findOwnedHomework(id, familyId) {
   }
 }
 
-function validatePayload(event) {
-  const title = cleanText(event.title, 50);
+function validatePayload(event, fallbackDate) {
+  const title = typeof event.title === "string" ? event.title.trim() : "";
+  const homeworkDate = Object.hasOwn(event, "homeworkDate") ? event.homeworkDate : fallbackDate;
   const subject = cleanText(event.subject, 20);
   const semester = cleanText(event.semester, 8);
   const content = cleanText(event.content, 2000);
@@ -68,6 +75,10 @@ function validatePayload(event) {
   const hasDeadline = event.hasDeadline === true;
   const deadline = hasDeadline ? new Date(event.deadline) : null;
   if (!title || !subject || !/^\d{4}(上|下)$/.test(semester)) return { error: "请完整填写学期、科目和主题" };
+  if (title.length > 500) return { error: "主题不能超过500字，请精简后保存" };
+  if ((Object.hasOwn(event, "homeworkDate") || homeworkDate !== undefined) && !isValidHomeworkDate(homeworkDate)) {
+    return { error: "请选择正确的作业日期" };
+  }
   if (hasDeadline && Number.isNaN(deadline.getTime())) return { error: "截止时间格式不正确" };
   if (images.length !== cleanArray(event.images, 9).length || videos.length !== cleanArray(event.videos, 1).length || links.length !== cleanArray(event.links, 5).length) {
     return { error: "媒体或链接格式不正确" };
@@ -75,6 +86,7 @@ function validatePayload(event) {
   return {
     data: {
       semester, subject, title, content, images, videos, links, extraRequirement,
+      ...(homeworkDate !== undefined ? { homeworkDate } : {}),
       isImportant: event.isImportant === true,
       hasDeadline,
       deadline,
@@ -152,7 +164,7 @@ async function get(user, event) {
 
 async function create(user, event) {
   if (user.role === "child") return failure("孩子账号不能新增作业");
-  const payload = validatePayload(event);
+  const payload = validatePayload(event, new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10));
   if (payload.error) return failure(payload.error);
   const request = parseCreateRequestId(event);
   if (request.error) return failure(request.error);
@@ -195,7 +207,7 @@ async function update(user, event) {
   if (user.role === "child") return failure("孩子账号不能编辑作业");
   const item = await findOwnedHomework(cleanText(event.id, 64), user.familyId);
   if (!item) return failure("作业不存在或无权编辑");
-  const payload = validatePayload(event);
+  const payload = validatePayload(event, item.homeworkDate);
   if (payload.error) return failure(payload.error);
   await db.collection("homework").doc(item._id).update({ data: payload.data });
   return success({ id: item._id }, "作业已更新");

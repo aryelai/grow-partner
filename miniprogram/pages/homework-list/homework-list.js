@@ -1,7 +1,7 @@
 const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { DEFAULT_SUBJECTS } = require("../../utils/constants");
-const { getAdjacentSemester, formatDateTime } = require("../../utils/date");
+const { getAdjacentSemester, formatDateTime, formatHomeworkDate } = require("../../utils/date");
 const { sortHomework } = require("../../utils/homework");
 const { canPerform } = require("../../utils/permissions");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
@@ -141,6 +141,8 @@ Page({
         images: item.images || [], videos: item.videos || [], links: item.links || [], extraTags: item.extraTags || [],
         createdByName: RELATION_NAMES[item.createdByName] || item.createdByName || "家庭成员",
         deadlineText: item.deadline ? formatDateTime(item.deadline) : "",
+        homeworkDateText: formatHomeworkDate(item.homeworkDate),
+        homeworkDateMissing: formatHomeworkDate(item.homeworkDate) === "日期待补充",
         isOverdue: item.hasDeadline && !item.isCompleted && new Date(item.deadline).getTime() < now.getTime(),
       }));
       const merged = reset ? items : [...this.data.items, ...items];
@@ -189,7 +191,7 @@ Page({
     if (this.data.guestMode) {
       const item = this.data.items.find((candidate) => candidate._id === event.currentTarget.dataset.id);
       if (!item) return;
-      wx.showModal({ title: item.title, content: `${item.subject} · ${item.createdByName}\n\n${item.content || "这是一条本地演示作业。"}`, showCancel: false, confirmText: "知道了" });
+      wx.showModal({ title: "演示作业详情", content: `${item.subject} · 作业日期：${item.homeworkDateText}\n\n${item.title}\n\n详细要求：${item.content || "无"}`, showCancel: false, confirmText: "知道了" });
       return;
     }
     wx.navigateTo({ url: `/pages/homework-detail/homework-detail?id=${event.currentTarget.dataset.id}` });

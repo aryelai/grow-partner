@@ -149,6 +149,48 @@ async function changeSubject(user, event, removing) {
   return success({ subjects, defaultSubjects: defaults, customSubjects }, removing ? "自定义科目已删除" : "科目已添加");
 }
 
+async function renameSubject(user, event) {
+  const family = await getFamily(user);
+  if (user.role !== "creator" && !(user.role === "member" && family.allowMemberEditSettings)) {
+    return failure("您没有管理科目的权限");
+  }
+  const subject = cleanText(event.subject, 10);
+  const newSubject = cleanText(event.newSubject, 10);
+  if (!subject || !newSubject) return failure("科目名称不能为空");
+  const defaults = DEFAULT_SUBJECTS[family.educationStage] || [];
+  const result = await db.collection("subjects").where({
+    familyId: user.familyId,
+    educationStage: family.educationStage,
+    grade: family.grade,
+  }).limit(1).get();
+  const record = result.data[0];
+  const current = record && Array.isArray(record.subjects) ? record.subjects : defaults;
+  if (!current.includes(subject)) return failure("原科目不存在，请刷新后重试");
+  if (newSubject !== subject && current.includes(newSubject)) return failure("该科目名称已存在");
+  if (newSubject === subject) {
+    return success({
+      subjects: current,
+      defaultSubjects: defaults,
+      customSubjects: current.filter((item) => !defaults.includes(item)),
+    });
+  }
+  const subjects = current.map((item) => item === subject ? newSubject : item);
+  const customSubjects = subjects.filter((item) => !defaults.includes(item));
+  const order = subjects.reduce((resultObject, item, index) => ({ ...resultObject, [item]: index }), {});
+  const data = {
+    familyId: user.familyId,
+    educationStage: family.educationStage,
+    grade: family.grade,
+    subjects,
+    customSubjects,
+    order,
+    updatedAt: new Date(),
+  };
+  if (record) await db.collection("subjects").doc(record._id).update({ data });
+  else await db.collection("subjects").add({ data });
+  return success({ subjects, defaultSubjects: defaults, customSubjects }, "科目名称已修改");
+}
+
 exports.main = async (event = {}) => {
   const { OPENID } = cloud.getWXContext();
   try {
@@ -161,6 +203,7 @@ exports.main = async (event = {}) => {
       case "getSubjects": return await getSubjects(user);
       case "addSubject": return await changeSubject(user, event, false);
       case "removeSubject": return await changeSubject(user, event, true);
+      case "renameSubject": return await renameSubject(user, event);
       default: return failure("不支持的操作");
     }
   } catch (error) {

@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function loadSettingsFunction({ role, currentSettings }) {
+function loadSettingsFunction({ role, currentSettings, currentSubjects = null }) {
   const sourcePath = path.join(__dirname, "../cloudfunctions/settings/index.js");
   const source = fs.readFileSync(sourcePath, "utf8");
   const user = {
@@ -22,6 +22,7 @@ function loadSettingsFunction({ role, currentSettings }) {
     allowMemberEditSettings: true,
   };
   let updatedSettings = null;
+  let updatedSubjects = null;
   const queryResult = (data) => ({ limit() { return { async get() { return { data }; } }; } });
   const database = {
     collection(name) {
@@ -43,6 +44,15 @@ function loadSettingsFunction({ role, currentSettings }) {
             return { async update({ data }) { updatedSettings = data; } };
           },
           async add({ data }) { updatedSettings = data; },
+        };
+      }
+      if (name === "subjects") {
+        return {
+          where() { return queryResult(currentSubjects ? [currentSubjects] : []); },
+          doc() {
+            return { async update({ data }) { updatedSubjects = data; } };
+          },
+          async add({ data }) { updatedSubjects = data; },
         };
       }
       throw new Error(`测试未实现集合：${name}`);
@@ -70,6 +80,7 @@ function loadSettingsFunction({ role, currentSettings }) {
   return {
     main: moduleValue.exports.main,
     getUpdatedSettings: () => updatedSettings,
+    getUpdatedSubjects: () => updatedSubjects,
   };
 }
 
@@ -173,4 +184,39 @@ test("读取历史家庭设置时默认提醒始终是一个有效值", async ()
 
   assert.equal(result.success, true);
   assert.deepEqual([...result.data.settings.reminderDefaultAdvance], [120]);
+});
+
+test("家庭创建者可以重命名默认科目且不修改默认模板", async () => {
+  const fixture = loadSettingsFunction({ role: "creator", currentSettings: null });
+
+  const result = await fixture.main({
+    action: "renameSubject",
+    subject: "道德与法治",
+    newSubject: "政治",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.subjects.includes("道德与法治"), false);
+  assert.equal(result.data.subjects.includes("政治"), true);
+  assert.equal(result.data.defaultSubjects.includes("道德与法治"), true);
+  assert.equal(result.data.defaultSubjects.includes("政治"), false);
+  assert.equal(fixture.getUpdatedSubjects().subjects.includes("政治"), true);
+});
+
+test("科目重命名拒绝不存在的源科目和重复名称", async () => {
+  const currentSubjects = {
+    _id: "subjects-id",
+    subjects: ["语文", "数学", "政治"],
+    customSubjects: ["政治"],
+  };
+  const fixture = loadSettingsFunction({ role: "creator", currentSettings: null, currentSubjects });
+
+  const missing = await fixture.main({ action: "renameSubject", subject: "历史", newSubject: "地理" });
+  const duplicate = await fixture.main({ action: "renameSubject", subject: "政治", newSubject: "数学" });
+
+  assert.equal(missing.success, false);
+  assert.equal(missing.message, "原科目不存在，请刷新后重试");
+  assert.equal(duplicate.success, false);
+  assert.equal(duplicate.message, "该科目名称已存在");
+  assert.equal(fixture.getUpdatedSubjects(), null);
 });

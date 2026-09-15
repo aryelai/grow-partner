@@ -5,8 +5,13 @@
       <text class="field-label">科目 *</text>
       <scroll-view scroll-x="{{true}}" class="subject-scroll"><view class="subject-row"><view wx:for="{{subjects}}" wx:key="*this" class="tag {{form.subject === item ? 'active' : ''}}" data-value="{{item}}" bindtap="selectSubject">{{item}}</view></view></scroll-view>
     </view>
-    <view class="field"><text class="field-label">主题 *</text><input class="input" maxlength="50" value="{{form.title}}" data-field="title" bindinput="onInput" placeholder="例如：数学练习册 P25-27" /></view>
-    <view class="field"><text class="field-label">详细内容</text><textarea class="textarea" maxlength="2000" value="{{form.content}}" data-field="content" bindinput="onInput" placeholder="记录题目范围、完成方式等" /></view>
+    <view class="field">
+      <text class="field-label">作业日期 *</text>
+      <picker mode="date" value="{{form.homeworkDate}}" bindchange="onHomeworkDate"><view class="picker homework-date-picker"><text>{{homeworkDateText}}</text><text class="picker-action">选择</text></view></picker>
+      <view class="homework-field-help">这一天布置或登记的作业，与截止时间独立。</view>
+    </view>
+    <view class="field"><text class="field-label">主题 *</text><textarea class="textarea homework-theme-input" auto-height="{{true}}" maxlength="500" value="{{form.title}}" data-field="title" bindinput="onInput" placeholder="完整记录作业内容，例如：阳 P10～P12（不做 Listening）" /><view class="homework-field-help">{{form.title.length}} / 500 字，列表会完整显示主题。</view></view>
+    <view class="field"><text class="field-label">详细要求</text><textarea class="textarea" maxlength="2000" value="{{form.content}}" data-field="content" bindinput="onInput" placeholder="无；如有详细要求或备注，可在此补充" /></view>
     <view class="field"><text class="field-label">附加要求</text><input class="input" maxlength="100" value="{{form.extraRequirement}}" data-field="extraRequirement" bindinput="onInput" placeholder="例如：明天要交" /></view>
 
     <view class="switch-row"><text>标记为重要</text><switch color="#4A90D9" checked="{{form.isImportant}}" data-field="isImportant" bindchange="onSwitch" /></view>

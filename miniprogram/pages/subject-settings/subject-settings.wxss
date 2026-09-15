@@ -1,1 +1,15 @@
-.subject-list { display: flex; flex-wrap: wrap; gap: 14rpx; }.subject { display: flex; align-items: center; min-height: 72rpx; padding: 0 22rpx; border-radius: 999rpx; box-sizing: border-box; background: #EEF1F5; }.subject.custom { color: var(--primary); background: var(--primary-light); }.remove { display: flex; align-items: center; justify-content: center; width: 48rpx; height: 48rpx; margin-left: 8rpx; color: var(--danger); font-size: 34rpx; }.tip { margin-top: 24rpx; font-size: 22rpx; }.add-row { display: flex; align-items: center; gap: 16rpx; }.add-row .input { flex: 1; min-width: 0; }.add-row button { flex: 0 0 130rpx; width: 130rpx; min-height: 88rpx; padding: 0; }
+.subject-list { border-top: 2rpx solid var(--border); }
+.subject-item { display: flex; align-items: center; justify-content: space-between; min-height: 112rpx; padding: 14rpx 0; border-bottom: 2rpx solid var(--border); box-sizing: border-box; }
+.subject-info { min-width: 0; margin-right: 18rpx; }
+.subject-name { display: block; overflow: hidden; color: var(--text); font-size: 29rpx; font-weight: 600; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.subject-kind { display: block; margin-top: 4rpx; color: var(--text-light); font-size: 22rpx; line-height: 1.4; }
+.subject-actions { display: flex; flex: 0 0 auto; gap: 12rpx; }
+.subject-action { width: 112rpx; min-height: 88rpx; padding: 0 16rpx; font-size: 25rpx; }
+.tip { margin-top: 22rpx; font-size: 23rpx; line-height: 1.6; }
+.readonly-value { display: flex; align-items: center; min-height: 88rpx; padding: 0 24rpx; border-radius: 14rpx; box-sizing: border-box; background: #F5F7F9; color: var(--text-light); }
+.edit-tip { margin-top: -8rpx; color: var(--text-light); font-size: 23rpx; line-height: 1.6; }
+.edit-actions { display: flex; gap: 18rpx; margin-top: 28rpx; }
+.edit-actions button { flex: 1; min-width: 0; }
+.add-row { display: flex; align-items: center; gap: 16rpx; }
+.add-row .input { flex: 1; min-width: 0; }
+.add-button { flex: 0 0 136rpx; width: 136rpx; padding: 0 16rpx; }

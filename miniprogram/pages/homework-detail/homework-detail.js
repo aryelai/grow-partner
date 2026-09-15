@@ -1,6 +1,6 @@
 const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
-const { formatDateTime } = require("../../utils/date");
+const { formatDateTime, formatHomeworkDate } = require("../../utils/date");
 const { RELATIONS } = require("../../utils/constants");
 const { canPerform } = require("../../utils/permissions");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
@@ -30,7 +30,7 @@ Page({
       const item = await callFunction("homework", "get", { id: this.data.id });
       const isOverdue = item.hasDeadline && !item.isCompleted && new Date(item.deadline).getTime() < Date.now();
       this.setData({
-        item: { ...item, images: item.images || [], videos: item.videos || [], links: item.links || [], extraTags: item.extraTags || [], createdByName: RELATIONS[item.createdByName] || item.createdByName, createdAtText: formatDateTime(item.createdAt), deadlineText: formatDateTime(item.deadline), isOverdue },
+        item: { ...item, images: item.images || [], videos: item.videos || [], links: item.links || [], extraTags: item.extraTags || [], createdByName: RELATIONS[item.createdByName] || item.createdByName, createdAtText: formatDateTime(item.createdAt), deadlineText: formatDateTime(item.deadline), homeworkDateText: formatHomeworkDate(item.homeworkDate), homeworkDateMissing: formatHomeworkDate(item.homeworkDate) === "日期待补充", isOverdue },
         canEdit: canPerform(this.currentUser.role, "updateHomework"),
       });
     } catch (error) { showError(error); }

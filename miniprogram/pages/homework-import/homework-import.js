@@ -2,6 +2,7 @@ const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { DEFAULT_SUBJECTS } = require("../../utils/constants");
 const { canPerform } = require("../../utils/permissions");
+const { formatHomeworkDate } = require("../../utils/date");
 const {
   MAX_DRAFTS,
   validateSelectedFiles,
@@ -136,7 +137,7 @@ Page({
         count: 3,
         mediaType: ["image"],
         sourceType: ["album", "camera"],
-        sizeType: ["compressed"],
+        sizeType: ["original", "compressed"],
       });
       const selectedFiles = validateSelectedFiles(result.tempFiles);
       this.disableUnloadGuard();
@@ -285,6 +286,21 @@ Page({
       [`drafts[${index}].subject`]: subject,
       [`drafts[${index}].subjectUncertain`]: false,
       [`drafts[${index}].uncertainFields`]: uncertainFields.filter((item) => item !== "subject"),
+      [`drafts[${index}].possibleDuplicate`]: false,
+      [`drafts[${index}].saveError`]: "",
+    });
+  },
+
+  onHomeworkDate(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const draft = this.data.drafts[index];
+    if (!draft || draft.saved || this.data.saving) return;
+    this.setData({
+      [`drafts[${index}].homeworkDate`]: event.detail.value,
+      [`drafts[${index}].homeworkDateText`]: formatHomeworkDate(event.detail.value),
+      [`drafts[${index}].dateSource`]: "manual",
+      [`drafts[${index}].homeworkDateUncertain`]: false,
+      [`drafts[${index}].uncertainFields`]: (draft.uncertainFields || []).filter((field) => field !== "homeworkDate"),
       [`drafts[${index}].possibleDuplicate`]: false,
       [`drafts[${index}].saveError`]: "",
     });

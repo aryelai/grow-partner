@@ -10,6 +10,7 @@
     <view class="scope-section">
       <view class="section-title compact-title">识别范围</view>
       <view class="muted scope-help">智能判断：周表取最新一列，单日图取全部；也可手动指定周表星期或整周。</view>
+      <view class="muted scope-help">缺少明确日期的周表按北京时间本周推测作业日期（星期五/周末默认周五），保存前请核对。</view>
       <view class="muted scope-help">重复提示仅检查当前学期最近 50 条已有作业，最终仍请人工确认。</view>
       <radio-group class="scope-options" bindchange="changeImportScope">
         <label class="scope-option {{importScope === item.value ? 'active' : ''}}" wx:for="{{importScopes}}" wx:key="value">
@@ -24,6 +25,10 @@
         <view class="muted">仅支持 JPEG、PNG，单张不超过 4 MB</view>
       </view>
       <button class="ghost-button select-button" disabled="{{processing || saving}}" bindtap="chooseScreenshots">{{selectedFiles.length ? '重新选择' : '选择截图'}}</button>
+    </view>
+    <view class="capture-guide">
+      <view class="capture-guide-title">手写周表建议先裁剪</view>
+      <view>只保留有作业的星期列与科目区域，让字迹尽量占满画面；选择图片质量时优先使用原图。模糊字迹仍需在草稿中核对。</view>
     </view>
     <view class="preview-grid" wx:if="{{selectedFiles.length}}">
       <view class="preview-item" wx:for="{{selectedFiles}}" wx:key="tempFilePath">
@@ -55,7 +60,7 @@
       <text wx:if="{{item.saved}}" class="saved-badge">✓ 已保存</text>
     </view>
     <view wx:if="{{item.possibleDuplicate}}" class="duplicate-note">可能与当前学期已有作业重复，已默认取消勾选；确认不是重复项后可重新勾选。</view>
-    <view wx:if="{{item.uncertainFields.length}}" class="uncertain-note">黄色字段字迹或含义不确定，请人工核对。</view>
+    <view wx:if="{{item.uncertainFields.length}}" class="uncertain-note">黄色字段字迹、含义或推测日期不确定，请人工核对。</view>
 
     <view class="field {{item.subjectUncertain ? 'uncertain-field' : ''}}">
       <text class="field-label">科目 *</text>
@@ -66,8 +71,14 @@
       </scroll-view>
       <view wx:if="{{!item.subject}}" class="field-warning">AI 未能匹配科目，请手动选择</view>
     </view>
-    <view class="field {{item.titleUncertain ? 'uncertain-field' : ''}}"><text class="field-label">主题 *</text><input class="input" maxlength="50" disabled="{{item.saved || saving}}" value="{{item.title}}" data-index="{{draftIndex}}" data-field="title" bindinput="onDraftInput" /></view>
-    <view class="field {{item.contentUncertain ? 'uncertain-field' : ''}}"><text class="field-label">详细内容</text><textarea class="textarea" maxlength="2000" disabled="{{item.saved || saving}}" value="{{item.content}}" data-index="{{draftIndex}}" data-field="content" bindinput="onDraftInput" /></view>
+    <view class="field {{item.homeworkDateUncertain ? 'uncertain-field' : ''}}">
+      <text class="field-label">作业日期 *</text>
+      <picker mode="date" value="{{item.homeworkDate}}" disabled="{{item.saved || saving}}" data-index="{{draftIndex}}" bindchange="onHomeworkDate"><view class="picker homework-date-picker"><text>{{item.homeworkDateText}}</text><text class="picker-action">选择</text></view></picker>
+      <view class="homework-field-help" wx:if="{{item.dateSource === 'inferred_week'}}">按本周星期推测，请核对；这不是截止时间。</view>
+      <view class="homework-field-help" wx:elif="{{item.dateSource === 'default_today'}}">默认北京时间今天，可按实际作业日期修改。</view>
+    </view>
+    <view class="field {{item.titleUncertain ? 'uncertain-field' : ''}}"><text class="field-label">主题 *</text><textarea class="textarea homework-theme-input" auto-height="{{true}}" maxlength="-1" disabled="{{item.saved || saving}}" value="{{item.title}}" data-index="{{draftIndex}}" data-field="title" bindinput="onDraftInput" /><view class="homework-field-help">{{item.title.length}} / 500 字，原文完整放在主题中，超限需精简后保存。</view></view>
+    <view class="field {{item.contentUncertain ? 'uncertain-field' : ''}}"><text class="field-label">详细要求</text><textarea class="textarea" maxlength="2000" disabled="{{item.saved || saving}}" value="{{item.content}}" data-index="{{draftIndex}}" data-field="content" bindinput="onDraftInput" placeholder="无；如有详细要求或备注，可手动补充" /></view>
     <view class="field {{item.extraRequirementUncertain ? 'uncertain-field' : ''}}"><text class="field-label">附加要求</text><input class="input" maxlength="100" disabled="{{item.saved || saving}}" value="{{item.extraRequirement}}" data-index="{{draftIndex}}" data-field="extraRequirement" bindinput="onDraftInput" /></view>
     <view class="deadline-switch {{item.deadlineUncertain ? 'uncertain-field' : ''}}"><text>设置截止时间</text><switch color="#4A90D9" checked="{{item.hasDeadline}}" disabled="{{item.saved || saving}}" data-index="{{draftIndex}}" bindchange="onDeadlineSwitch" /></view>
     <view class="deadline-row" wx:if="{{item.hasDeadline}}">

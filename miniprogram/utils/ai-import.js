@@ -1,9 +1,12 @@
+const { getBeijingDate, formatHomeworkDate } = require("./date");
+const { validateIsoDate } = require("./validation");
+
 const MAX_IMAGES = 3;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_DRAFTS = 60;
 const DUPLICATE_PAGE_SIZE = 50;
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
-const UNCERTAIN_FIELDS = new Set(["subject", "title", "content", "extraRequirement", "deadline"]);
+const UNCERTAIN_FIELDS = new Set(["subject", "title", "content", "extraRequirement", "homeworkDate", "deadline"]);
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 
 function getExtension(filePath) {
@@ -166,6 +169,9 @@ function createEditableDrafts(drafts, subjects, semester, jobId) {
     if (!REQUEST_ID_PATTERN.test(requestId)) throw new Error("识别任务编号无效，请重新识别");
     const deadline = splitDeadline(draft && draft.hasDeadline === true ? draft.deadline : "");
     const subject = cleanText(draft && draft.subject, 20);
+    const homeworkDate = validateIsoDate(draft && draft.homeworkDate) ? draft.homeworkDate : getBeijingDate();
+    const dateSource = ["explicit", "inferred_week", "default_today"].includes(draft && draft.dateSource)
+      ? draft.dateSource : "default_today";
     const uncertainFields = [...new Set(Array.isArray(draft && draft.uncertainFields)
       ? draft.uncertainFields.filter((field) => typeof field === "string" && UNCERTAIN_FIELDS.has(field))
       : [])];
@@ -178,7 +184,11 @@ function createEditableDrafts(drafts, subjects, semester, jobId) {
       possibleDuplicate: false,
       semester: /^\d{4}(上|下)$/.test(String(draft && draft.semester)) ? draft.semester : semester,
       subject: validSubjects.has(subject) ? subject : "",
-      title: cleanText(draft && draft.title, 50),
+      title: typeof (draft && draft.title) === "string" ? draft.title.trim() : "",
+      homeworkDate,
+      homeworkDateText: formatHomeworkDate(homeworkDate),
+      dateSource,
+      homeworkDateUncertain: uncertainFields.includes("homeworkDate"),
       content: cleanText(draft && draft.content, 2000),
       extraRequirement: cleanText(draft && draft.extraRequirement, 100),
       uncertainFields,
@@ -195,11 +205,12 @@ function createEditableDrafts(drafts, subjects, semester, jobId) {
 function createHomeworkFingerprint(item) {
   const semester = cleanText(item && item.semester, 8);
   const subject = cleanText(item && item.subject, 20);
-  const title = cleanText(item && item.title, 50);
+  const title = typeof (item && item.title) === "string" ? item.title.trim() : "";
   if (!/^\d{4}(上|下)$/.test(semester) || !subject || !title) return "";
   return JSON.stringify([
     semester,
     subject,
+    validateIsoDate(item && item.homeworkDate) ? item.homeworkDate : "",
     title,
     cleanText(item && item.content, 2000),
     cleanText(item && item.extraRequirement, 100),
@@ -255,13 +266,15 @@ function createHomeworkPayload(draft) {
   const requestId = typeof (draft && draft.requestId) === "string" ? draft.requestId.trim() : "";
   const semester = cleanText(draft && draft.semester, 8);
   const subject = cleanText(draft && draft.subject, 20);
-  const title = cleanText(draft && draft.title, 50);
+  const title = typeof (draft && draft.title) === "string" ? draft.title.trim() : "";
   if (!REQUEST_ID_PATTERN.test(requestId)) {
     throw new Error("识别草稿编号无效，请重新识别");
   }
   if (!/^\d{4}(上|下)$/.test(semester) || !subject || !title) {
     throw new Error("请选择科目并填写主题");
   }
+  if (!validateIsoDate(draft.homeworkDate)) throw new Error("请选择正确的作业日期");
+  if (title.length > 500) throw new Error("主题不能超过500字，请精简或拆分后保存");
   const hasDeadline = draft.hasDeadline === true;
   let deadline = null;
   if (hasDeadline) {
@@ -277,6 +290,7 @@ function createHomeworkPayload(draft) {
     semester,
     subject,
     title,
+    homeworkDate: draft.homeworkDate,
     content: cleanText(draft.content, 2000),
     extraRequirement: cleanText(draft.extraRequirement, 100),
     isImportant: false,

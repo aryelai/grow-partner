@@ -286,11 +286,15 @@ function createAiService(dependencies) {
       validateImageBuffer(buffer, { mimeType: file.mimeType, expectedSize: file.size });
       imageParts.push({
         type: "image_url",
-        image_url: { url: `data:${file.mimeType};base64,${buffer.toString("base64")}` },
+        image_url: {
+          url: `data:${file.mimeType};base64,${buffer.toString("base64")}`,
+          detail: "high",
+        },
       });
     }
+    const recognitionDate = getBeijingDate(now());
     const prompt = buildRecognitionPrompt({
-      date: getBeijingDate(now()),
+      date: recognitionDate,
       semester: context.semester,
       subjects: context.subjects,
       importScope: validateImportScope(job.importScope),
@@ -302,6 +306,7 @@ function createAiService(dependencies) {
     if (modelOutputTruncated(response, MAX_MODEL_TOKENS)) throw new Error("MODEL_OUTPUT_TRUNCATED");
     return normalizeModelDrafts(extractModelPayload(getModelText(response)), {
       ...context,
+      date: recognitionDate,
       importScope: validateImportScope(job.importScope),
     });
   }

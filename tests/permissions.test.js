@@ -336,7 +336,7 @@ test("孩子触发保存删除时不会产生外部副作用", async () => {
 
 test("权限刷新等待期间保存操作只提交一次", async () => {
   const fixtures = [
-    { path: "miniprogram/pages/homework-edit/homework-edit.js", domain: "homework", prepare(page) { page.setData({ "form.subject": "语文", "form.title": "作业" }); } },
+    { path: "miniprogram/pages/homework-edit/homework-edit.js", domain: "homework", prepare(page) { page.setData({ "form.subject": "语文", "form.title": "作业", "form.homeworkDate": "2026-09-14" }); } },
     { path: "miniprogram/pages/notice-edit/notice-edit.js", domain: "notice", prepare(page) { page.setData({ "form.title": "通知" }); } },
     { path: "miniprogram/pages/plan-edit/plan-edit.js", domain: "plan", prepare(page) { page.setData({ "form.title": "计划", "form.items": [{ text: "子任务", isDone: false, priority: "medium" }] }); } },
   ];

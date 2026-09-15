@@ -424,6 +424,9 @@ test("成功识别时校验图片、调用托管模型、规范化草稿并删�
   const result = await fixture.service.analyzeImportJob(testUser.openid, { jobId: created.jobId });
   assert.equal(result.drafts[0].semester, "2026下");
   assert.equal(result.drafts[0].subject, "数学");
+  assert.equal(result.drafts[0].homeworkDate, "2026-09-13");
+  assert.equal(result.drafts[0].title, "完成练习\n第 1 页\n订正错题");
+  assert.equal(result.drafts[0].content, "");
   assert.equal(result.drafts[0].hasDeadline, true);
   assert.equal(result.drafts[0].deadline, "2026-09-14T12:00:00.000Z");
   assert.equal(result.summary.sourceType, "daily_list");
@@ -433,11 +436,30 @@ test("成功识别时校验图片、调用托管模型、规范化草稿并删�
   assert.equal(modelInput.max_tokens, 4000);
   assert.equal(modelInput.messages[0].content.map((item) => item.type).join(","), "image_url,text");
   assert.equal(modelInput.messages[0].content.some((item) => item.type === "image_url" && item.image_url.url.startsWith("data:image/jpeg;base64,")), true);
+  assert.equal(modelInput.messages[0].content.find((item) => item.type === "image_url").image_url.detail, "high");
   assert.deepEqual(fixture.getDeleted(), [created.uploads[0].fileId]);
   const job = fixture.getJobs()[0];
   assert.equal(job.status, "completed");
   assert.equal(job.cleanupRequired, false);
   assert.equal(JSON.stringify(job).includes("完成练习"), false, "任务文档不能保存识别正文");
+});
+
+test("跨北京时间午夜的模型响应仍使用识别开始日期推算本周", async () => {
+  let prompt = "";
+  const fixture = createFixture({
+    modelText: JSON.stringify({ sourceType: "weekly_table", detectedScope: "monday", drafts: [{ subject: "数学", title: "卷《有理数》", sourceWeekday: "monday" }] }),
+    onGenerate(input) {
+      prompt = input.messages[0].content.find((part) => part.type === "text").text;
+      fixture.setTime("2026-09-13T16:00:01.000Z");
+    },
+  });
+  const created = await fixture.service.createImportJob(testUser.openid, { files: fileInput() });
+  const result = await fixture.service.analyzeImportJob(testUser.openid, { jobId: created.jobId });
+  assert.match(prompt, /北京时间日期：2026-09-13/);
+  assert.equal(result.drafts[0].homeworkDate, "2026-09-07");
+  assert.equal(result.drafts[0].dateSource, "inferred_week");
+  assert.equal(result.drafts[0].hasDeadline, false);
+  assert.deepEqual(fixture.getDeleted(), [created.uploads[0].fileId]);
 });
 
 test("旧任务缺少识别范围时分析按智能判断兼容", async () => {

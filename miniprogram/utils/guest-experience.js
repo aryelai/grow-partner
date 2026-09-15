@@ -1,4 +1,4 @@
-const { formatDate, formatDateTime, getCurrentSemester, getDateRangeForPlan } = require("./date");
+const { formatDate, formatDateTime, getCurrentSemester, getDateRangeForPlan, getBeijingDate, formatHomeworkDate } = require("./date");
 
 const GUEST_SEMESTER_LABEL = "功能演示";
 
@@ -27,6 +27,7 @@ function normalizeKeyword(value) {
 function createGuestHomeworkItems(options = {}, now = new Date()) {
   const tomorrow = addDays(now, 1);
   tomorrow.setHours(20, 0, 0, 0);
+  const homeworkDate = getBeijingDate(now);
   const items = [
     {
       _id: "guest-homework-math",
@@ -89,7 +90,7 @@ function createGuestHomeworkItems(options = {}, now = new Date()) {
   const subject = typeof options.subject === "string" ? options.subject : "全部";
   const status = typeof options.status === "string" ? options.status : "all";
   const keyword = normalizeKeyword(options.keyword);
-  return cloneItems(items.filter((item) => (
+  return cloneItems(items.map((item) => ({ ...item, homeworkDate, homeworkDateText: formatHomeworkDate(homeworkDate), homeworkDateMissing: false })).filter((item) => (
     (subject === "全部" || item.subject === subject)
     && (status === "all" || (status === "completed" ? item.isCompleted : !item.isCompleted))
     && (!keyword || `${item.title} ${item.content} ${item.subject}`.toLowerCase().includes(keyword))

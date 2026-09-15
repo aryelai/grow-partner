@@ -42,9 +42,10 @@ function loadHomeworkFunction(options = {}) {
           return {
             async get() {
               if (!storage.has(id)) throw missingDocument();
-              return { data: structuredClone(storage.get(id)) };
+              return { data: { ...structuredClone(storage.get(id)), _id: id } };
             },
             async set({ data }) { storage.set(id, structuredClone(data)); },
+            async update({ data }) { storage.set(id, { ...storage.get(id), ...structuredClone(data) }); },
           };
         },
         async add({ data }) {
@@ -158,6 +159,47 @@ test("相同创建请求编号并发重试只生成一条作业", async () => {
   assert.equal(first.data.id, second.data.id);
   assert.equal([first.data.created, second.data.created].filter(Boolean).length, 1);
   assert.equal(fixture.getDocuments().size, 1);
+});
+
+test("作业日期独立保存且长主题不会被截断", async () => {
+  const fixture = loadHomeworkFunction();
+  const title = "完整作业原文".repeat(20);
+  const result = await fixture.main(createInput({ homeworkDate: "2026-09-14", title, content: "" }));
+  assert.equal(result.success, true);
+  const saved = fixture.getDocuments().get(result.data.id);
+  assert.equal(saved.homeworkDate, "2026-09-14");
+  assert.equal(saved.title, title);
+  assert.equal(saved.content, "");
+  assert.equal(saved.deadline, null);
+});
+
+test("非法作业日期和超长主题在写入前被拒绝", async () => {
+  const fixture = loadHomeworkFunction();
+  for (const homeworkDate of ["", "2026-02-29", "2026-09-31", "2026-9-14", "2026-09-14T00:00:00Z", 20260914]) {
+    const result = await fixture.main(createInput({ homeworkDate }));
+    assert.equal(result.success, false);
+    assert.match(result.message, /作业日期/);
+  }
+  const tooLong = await fixture.main(createInput({ title: "题".repeat(501) }));
+  assert.equal(tooLong.success, false);
+  assert.match(tooLong.message, /500/);
+  assert.equal(fixture.getDocuments().size, 0);
+});
+
+test("旧客户端新增默认今天且编辑不覆盖日期或补猜历史日期", async () => {
+  const fixture = loadHomeworkFunction({ homework: [{
+    _id: "legacy", familyId: "family-id", semester: "2026下", subject: "数学", title: "历史作业",
+  }] });
+  const first = await fixture.main(createInput());
+  const beijingDate = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+  assert.equal(fixture.getDocuments().get(first.data.id).homeworkDate, beijingDate);
+  const second = await fixture.main(createInput({ homeworkDate: "2026-09-14" }));
+  const edit = await fixture.main(createInput({ action: "update", id: second.data.id }));
+  assert.equal(edit.success, true);
+  assert.equal(fixture.getDocuments().get(second.data.id).homeworkDate, "2026-09-14");
+  const legacy = await fixture.main(createInput({ action: "update", id: "legacy" }));
+  assert.equal(legacy.success, true);
+  assert.equal(fixture.getDocuments().get("legacy").homeworkDate, undefined);
 });
 
 test("创建请求编号重试时返回原作业且不覆盖已保存内容", async () => {

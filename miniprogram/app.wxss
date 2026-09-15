@@ -79,3 +79,13 @@ button::after { border: 0; }
 .tag-group .tag { margin-right: 0; }
 .tag.active { color: #fff; background: var(--primary); }
 .fab { position: fixed; right: 36rpx; bottom: calc(150rpx + env(safe-area-inset-bottom)); z-index: 8; width: 96rpx; height: 96rpx; padding: 0; border-radius: 50%; color: #fff; background: var(--primary); font-size: 52rpx; line-height: 92rpx; box-shadow: 0 10rpx 30rpx rgba(74, 144, 217, 0.35); }
+
+.homework-labels { display: flex; flex-wrap: wrap; align-items: center; gap: 12rpx; margin-bottom: 20rpx; }
+.homework-subject-label, .homework-date-label { display: inline-block; max-width: 100%; padding: 10rpx 18rpx; border-radius: 12rpx; box-sizing: border-box; font-size: 26rpx; font-weight: 600; line-height: 1.5; word-break: break-all; }
+.homework-subject-label { color: #2F6EAD; background: var(--primary-light); }
+.homework-date-label { color: #43545F; background: #F0F3F6; }
+.homework-date-label.missing { color: #8A5A00; background: #FFF4DF; }
+.homework-theme-input { min-height: 220rpx; }
+.homework-date-picker { justify-content: space-between; gap: 12rpx; background: var(--primary-light); border-color: #B9D5F0; font-weight: 600; }
+.homework-date-picker .picker-action { flex-shrink: 0; color: #2F6EAD; font-size: 24rpx; }
+.homework-field-help { margin-top: 10rpx; color: #66757F; font-size: 24rpx; line-height: 1.6; }

@@ -1,5 +1,20 @@
+const { validateIsoDate } = require("./validation");
+
 function pad(value) {
   return String(value).padStart(2, "0");
+}
+
+function getBeijingDate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new TypeError("Invalid date value");
+  return new Date(date.getTime() + 8 * 3600000).toISOString().slice(0, 10);
+}
+
+function formatHomeworkDate(value) {
+  if (!validateIsoDate(value)) return "日期待补充";
+  // 作业日期是日历值，星期计算不能随设备时区发生偏移。
+  const weekday = new Date(`${value}T00:00:00.000Z`).getUTCDay();
+  return `${value} ${["周日", "周一", "周二", "周三", "周四", "周五", "周六"][weekday]}`;
 }
 
 function toLocalDate(value) {
@@ -80,6 +95,8 @@ function getDateRangeForPlan(type, dateValue) {
 }
 
 module.exports = {
+  getBeijingDate,
+  formatHomeworkDate,
   formatDate,
   formatDateTime,
   getCurrentSemester,

@@ -1,8 +1,9 @@
 <view class="page" wx:if="{{item}}">
   <view class="card">
+    <view class="homework-labels"><text class="homework-subject-label">{{item.subject}}</text><text class="homework-date-label {{item.homeworkDateMissing ? 'missing' : ''}}">作业日期 · {{item.homeworkDateText}}</text></view>
     <view class="detail-title"><text wx:if="{{item.isImportant}}" class="important">★</text><text wx:if="{{item.hasDeadline}}" class="deadline-icon">◷</text>{{item.title}}<text wx:if="{{item.extraRequirement}}" class="extra">（{{item.extraRequirement}}）</text></view>
-    <view class="meta-grid"><text>科目：{{item.subject}}</text><text>学期：{{item.semester}}</text><text>录入：{{item.createdByName}}</text><text>时间：{{item.createdAtText}}</text><text wx:if="{{item.hasDeadline}}" class="{{item.isOverdue ? 'overdue' : ''}}">截止：{{item.deadlineText}}</text></view>
-    <view class="content" wx:if="{{item.content}}">{{item.content}}</view>
+    <view class="meta-grid"><text>学期：{{item.semester}}</text><text>录入：{{item.createdByName}}</text><text>录入时间：{{item.createdAtText}}</text><text wx:if="{{item.hasDeadline}}" class="{{item.isOverdue ? 'overdue' : ''}}">截止时间：{{item.deadlineText}}</text></view>
+    <view class="content"><view class="section-title">详细要求</view><view class="{{item.content ? '' : 'no-requirements'}}">{{item.content || '无'}}</view></view>
     <view class="image-grid"><image wx:for="{{item.images}}" wx:key="*this" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewImage" /></view>
     <video wx:if="{{item.videos.length}}" class="video" src="{{item.videos[0]}}" controls="{{true}}" />
     <view class="link" wx:for="{{item.links}}" wx:key="*this" data-url="{{item}}" bindtap="copyLink">{{item}}</view>

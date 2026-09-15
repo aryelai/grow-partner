@@ -1,4 +1,4 @@
-<view class="page homework-page">
+<view class="page homework-page {{canManage || canUseImport ? 'has-actions' : ''}}">
   <guest-banner wx:if="{{guestMode}}" />
   <view class="filter-panel">
     <view class="semester-switcher">
@@ -19,13 +19,16 @@
 
   <view class="homework-list">
     <view class="card homework-card {{homework.isCompleted ? 'completed' : ''}}" wx:for="{{items}}" wx:for-item="homework" wx:key="_id" data-id="{{homework._id}}" bindtap="openDetail">
+      <view class="homework-labels"><text class="homework-subject-label">{{homework.subject}}</text><text class="homework-date-label {{homework.homeworkDateMissing ? 'missing' : ''}}">作业日期 · {{homework.homeworkDateText}}</text></view>
       <view class="title-row">
         <text wx:if="{{homework.isImportant}}" class="important">★</text>
         <text wx:if="{{homework.hasDeadline}}" class="deadline-icon">◷</text>
         <text class="homework-title">{{homework.title}}</text>
         <text wx:if="{{homework.extraRequirement}}" class="extra">（{{homework.extraRequirement}}）</text>
       </view>
-      <view class="meta">{{homework.subject}} · 录入：{{homework.createdByName}}<text wx:if="{{homework.hasDeadline}}" class="{{homework.isOverdue ? 'overdue' : ''}}"> · 截止：{{homework.deadlineText}}</text></view>
+      <view class="requirements"><text class="requirements-label">详细要求：</text>{{homework.content || '无'}}</view>
+      <view wx:if="{{homework.hasDeadline}}" class="deadline-meta {{homework.isOverdue ? 'overdue' : ''}}">截止：{{homework.deadlineText}}</view>
+      <view class="meta">录入：{{homework.createdByName}}</view>
       <view class="tags" wx:if="{{homework.extraTags.length}}"><text class="small-tag" wx:for="{{homework.extraTags}}" wx:for-item="tagItem" wx:key="*this">{{tagItem}}</text></view>
       <view class="media-row" wx:if="{{homework.images.length || homework.videos.length || homework.links.length}}">
         <image class="thumb" wx:for="{{homework.images}}" wx:for-item="imageUrl" wx:key="*this" src="{{imageUrl}}" mode="aspectFill" data-url="{{imageUrl}}" data-urls="{{homework.images}}" catchtap="previewImage" />
@@ -41,6 +44,8 @@
     <view class="load-more" wx:if="{{loading}}">加载中…</view>
     <view class="load-more" wx:if="{{!loading && items.length && !hasMore}}">已加载全部</view>
   </view>
-  <button wx:if="{{canUseImport}}" class="ai-import-button {{canImport ? '' : 'unavailable'}}" bindtap="importHomework">AI 导入</button>
-  <button wx:if="{{canManage}}" class="fab" bindtap="createHomework">＋</button>
+  <view class="homework-actions" wx:if="{{canManage || canUseImport}}">
+    <button wx:if="{{canUseImport}}" class="ghost-button ai-import-button {{canImport ? '' : 'unavailable'}}" bindtap="importHomework">AI 导入</button>
+    <button wx:if="{{canManage}}" class="primary-button create-homework-button" bindtap="createHomework">＋ 新增作业</button>
+  </view>
 </view>

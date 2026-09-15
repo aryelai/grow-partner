@@ -5,10 +5,21 @@ const {
   getCurrentSemester,
   getAdjacentSemester,
   getDateRangeForPlan,
+  getBeijingDate,
+  formatHomeworkDate,
 } = require("../miniprogram/utils/date");
 
 test("一月归属上一自然年的下学期", () => {
   assert.equal(getCurrentSemester(new Date(2027, 0, 15)), "2026下");
+});
+
+test("作业默认日期使用北京时间且展示星期不受设备时区影响", () => {
+  assert.equal(getBeijingDate(new Date("2026-09-14T16:00:00.000Z")), "2026-09-15");
+  assert.equal(formatHomeworkDate("2026-09-15"), "2026-09-15 周二");
+  assert.equal(formatHomeworkDate("2024-02-29"), "2024-02-29 周四");
+  for (const value of [undefined, "", "2026-02-29", "2026-09-31", "2026-9-15"]) {
+    assert.equal(formatHomeworkDate(value), "日期待补充");
+  }
 });
 
 test("二月至七月归属当年上学期", () => {
