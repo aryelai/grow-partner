@@ -24,19 +24,20 @@
         <view class="section-title compact-title">选择截图</view>
         <view class="muted">仅支持 JPEG、PNG，单张不超过 4 MB</view>
       </view>
-      <button class="ghost-button select-button" disabled="{{processing || saving}}" bindtap="chooseScreenshots">{{selectedFiles.length ? '重新选择' : '选择截图'}}</button>
+      <button class="ghost-button select-button" disabled="{{processing || saving || editingImage}}" bindtap="chooseScreenshots">{{selectedFiles.length ? '重新选择' : '选择截图'}}</button>
     </view>
     <view class="capture-guide">
       <view class="capture-guide-title">手写周表建议先裁剪</view>
-      <view>只保留有作业的星期列与科目区域，让字迹尽量占满画面；选择图片质量时优先使用原图。模糊字迹仍需在草稿中核对。</view>
+      <view>选择后可点“裁剪”，保留有作业的星期列、科目和完整字迹，减少空白区域。优先读取原图，不再提供压缩图选项；模糊字迹、简称和手写文字仍需逐条核对，不确定处请勿直接保存。</view>
     </view>
     <view class="preview-grid" wx:if="{{selectedFiles.length}}">
       <view class="preview-item" wx:for="{{selectedFiles}}" wx:key="tempFilePath">
         <image src="{{item.tempFilePath}}" mode="aspectFill" />
         <text>{{index + 1}}</text>
+        <button class="crop-button" data-index="{{index}}" disabled="{{processing || saving || editingImage || drafts.length}}" bindtap="cropScreenshot">裁剪</button>
       </view>
     </view>
-    <button class="primary-button recognize-button" loading="{{processing}}" disabled="{{processing || saving || !selectedFiles.length}}" bindtap="recognize">开始识别</button>
+    <button class="primary-button recognize-button" loading="{{processing}}" disabled="{{processing || saving || editingImage || !selectedFiles.length}}" bindtap="recognize">开始识别</button>
     <view class="progress-text" wx:if="{{progressText}}">{{progressText}}</view>
   </view>
 

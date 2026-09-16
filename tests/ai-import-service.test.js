@@ -227,7 +227,7 @@ test("配置缺失时关闭状态并在创建凭据前拒绝", async () => {
     canImport: false,
     maxImages: 3,
     maxImageBytes: 4194304,
-    blockedReason: "AI 作业导入尚未配置",
+    blockedReason: "AI 图片导入尚未配置",
   });
   await assert.rejects(fixture.service.createImportJob(testUser.openid, { files: fileInput() }), { message: "CONFIGURATION" });
   assert.equal(fixture.getMetadataCalls().length, 0);
@@ -264,6 +264,7 @@ test("任务绑定服务端身份家庭与随机路径且不保存原始 OpenID 
   });
   const job = fixture.getJobs()[0];
   assert.equal(job.familyId, testUser.familyId);
+  assert.equal(job.importType, "homework");
   assert.equal(job.importScope, "friday_weekend");
   assert.equal(job.openid, undefined);
   assert.equal(job.ownerHash.length, 64);
@@ -297,6 +298,88 @@ test("创建任务拒绝非法识别范围且分析阶段只使用任务绑定�
   });
   assert.match(prompt, /周表只提取“星期二”列/);
   assert.doesNotMatch(prompt, /周表所有非空星期列/);
+});
+
+test("通知任务绑定业务类型且分析阶段不能由客户端改写为作业", async () => {
+  let prompt = "";
+  const fixture = createFixture({
+    modelText: JSON.stringify({
+      truncated: false,
+      drafts: [{
+        title: "下周一家长会",
+        source: "班主任",
+        category: "activity",
+        content: "请提前十分钟到场",
+        eventTimeExplicit: true,
+        eventTime: "2026-09-21T19:00:00+08:00",
+        uncertainFields: [],
+      }],
+    }),
+    onGenerate(input) {
+      prompt = input.messages[0].content.find((item) => item.type === "text").text;
+    },
+  });
+  const created = await fixture.service.createImportJob(testUser.openid, {
+    files: fileInput(),
+    importType: "notice",
+    importScope: "full_week",
+  });
+
+  const result = await fixture.service.analyzeImportJob(testUser.openid, {
+    jobId: created.jobId,
+    importType: "homework",
+  });
+
+  const job = fixture.getJobs()[0];
+  assert.equal(job.importType, "notice");
+  assert.equal(job.importScope, "auto");
+  assert.match(prompt, /学校通知信息提取器/);
+  assert.doesNotMatch(prompt, /家庭作业信息提取器/);
+  assert.equal(result.drafts[0].title, "下周一家长会");
+  assert.equal(result.drafts[0].subject, undefined);
+  assert.equal(result.drafts[0].suggestedRemindTime, "2026-09-21T11:00:00.000Z");
+});
+
+test("课程表任务使用课程表提示词和服务端课程格规范化", async () => {
+  let prompt = "";
+  const fixture = createFixture({
+    modelText: JSON.stringify({
+      truncated: false,
+      entries: [{
+        dayOfWeek: 1,
+        period: 1,
+        courseName: "语文",
+        teacher: "李老师",
+        location: "101",
+        startTime: "08:00",
+        endTime: "08:40",
+        uncertainFields: [],
+      }],
+    }),
+    onGenerate(input) {
+      prompt = input.messages[0].content.find((item) => item.type === "text").text;
+    },
+  });
+  const created = await fixture.service.createImportJob(testUser.openid, {
+    files: fileInput(),
+    importType: "timetable",
+  });
+  const result = await fixture.service.analyzeImportJob(testUser.openid, { jobId: created.jobId });
+
+  assert.match(prompt, /学校课程表信息提取器/);
+  assert.equal(result.entries[0].courseName, "语文");
+  assert.equal(result.entries[0].semester, "2026下");
+  assert.deepEqual(fixture.getDeleted(), [created.uploads[0].fileId]);
+});
+
+test("创建任务在申请上传凭据前拒绝非法业务类型", async () => {
+  const fixture = createFixture();
+  await assert.rejects(fixture.service.createImportJob(testUser.openid, {
+    files: fileInput(),
+    importType: "plan",
+  }), { message: "INVALID_IMPORT_TYPE" });
+  assert.equal(fixture.getMetadataCalls().length, 0);
+  assert.equal(fixture.getJobs().length, 0);
 });
 
 test("上传元数据只接受 Node SDK 的 data 嵌套结构", async () => {
@@ -471,6 +554,7 @@ test("旧任务缺少识别范围时分析按智能判断兼容", async () => {
   const entry = [...fixture.getDocuments().entries()].find(([, value]) => value.type === "job");
   const legacyJob = structuredClone(entry[1]);
   delete legacyJob.importScope;
+  delete legacyJob.importType;
   fixture.getDocuments().set(entry[0], legacyJob);
 
   await fixture.service.analyzeImportJob(testUser.openid, { jobId: created.jobId });

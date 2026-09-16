@@ -1,3 +1,10 @@
+.ai-draft-note { margin-bottom: 24rpx; padding: 24rpx 26rpx; border: 2rpx solid #B9D5F0; border-radius: 18rpx; background: #F2F8FE; }
+.ai-draft-title { color: #2F6EAD; font-size: 29rpx; font-weight: 600; }
+.ai-draft-detail { margin-top: 8rpx; color: var(--text-light); font-size: 24rpx; line-height: 1.6; }
+.ai-time-row { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin-top: 20rpx; padding-top: 18rpx; border-top: 2rpx solid #D9E8F5; }
+.ai-time-label { color: var(--text-light); font-size: 23rpx; }
+.ai-time-value { margin-top: 4rpx; color: var(--text); font-weight: 600; }
+.ai-time-button { flex-shrink: 0; min-width: 176rpx; padding: 0 22rpx; font-size: 25rpx; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; min-height: 88rpx; box-sizing: border-box; }
 .deadline-row { display: flex; gap: 16rpx; margin: 24rpx 0; }.deadline-row picker { flex: 1; min-width: 0; }
 .check { display: inline-flex; align-items: center; min-height: 72rpx; margin-right: 30rpx; }

@@ -116,6 +116,10 @@ async function list(user, event) {
   const sortMode = cleanText(event.sortMode, 32);
   if (sortMode && sortMode !== "created_at_desc") return failure("排序方式不正确");
   const query = { familyId: user.familyId };
+  if (Object.hasOwn(event, "homeworkDate") && event.homeworkDate !== undefined && event.homeworkDate !== "") {
+    if (!isValidHomeworkDate(event.homeworkDate)) return failure("作业日期不正确");
+    query.homeworkDate = event.homeworkDate;
+  }
   const semester = cleanText(event.semester, 8);
   if (semester) query.semester = semester;
   const subject = cleanText(event.subject, 20);

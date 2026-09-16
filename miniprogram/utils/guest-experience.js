@@ -1,6 +1,7 @@
 const { formatDate, formatDateTime, getCurrentSemester, getDateRangeForPlan, getBeijingDate, formatHomeworkDate } = require("./date");
 
 const GUEST_SEMESTER_LABEL = "功能演示";
+const { applyGuestCompletion } = require("./guest-state");
 
 function addDays(baseDate, offset) {
   const date = new Date(baseDate);
@@ -90,9 +91,10 @@ function createGuestHomeworkItems(options = {}, now = new Date()) {
   const subject = typeof options.subject === "string" ? options.subject : "全部";
   const status = typeof options.status === "string" ? options.status : "all";
   const keyword = normalizeKeyword(options.keyword);
-  return cloneItems(items.map((item) => ({ ...item, homeworkDate, homeworkDateText: formatHomeworkDate(homeworkDate), homeworkDateMissing: false })).filter((item) => (
+  return cloneItems(applyGuestCompletion("homework", items).map((item) => ({ ...item, homeworkDate, homeworkDateText: formatHomeworkDate(homeworkDate), homeworkDateMissing: false })).filter((item) => (
     (subject === "全部" || item.subject === subject)
     && (status === "all" || (status === "completed" ? item.isCompleted : !item.isCompleted))
+    && (!options.homeworkDate || item.homeworkDate === options.homeworkDate)
     && (!keyword || `${item.title} ${item.content} ${item.subject}`.toLowerCase().includes(keyword))
   )));
 }
@@ -107,6 +109,7 @@ function createGuestNoticeItems(options = {}, now = new Date()) {
       categoryName: "考试",
       source: "班级通知示例",
       createdAtText: formatDateTime(addDays(now, -1)),
+      eventTime: addDays(now, 3).toISOString(),
       remindTime: addDays(now, 2).toISOString(),
     },
     {
@@ -117,6 +120,7 @@ function createGuestNoticeItems(options = {}, now = new Date()) {
       categoryName: "活动",
       source: "班级通知示例",
       createdAtText: formatDateTime(addDays(now, -2)),
+      deadline: addDays(now, 1).toISOString(),
       remindTime: "",
     },
     {
@@ -131,9 +135,11 @@ function createGuestNoticeItems(options = {}, now = new Date()) {
     },
   ];
   const category = typeof options.category === "string" ? options.category : "all";
+  const status = typeof options.status === "string" ? options.status : "all";
   const keyword = normalizeKeyword(options.keyword);
-  return cloneItems(items.filter((item) => (
+  return cloneItems(applyGuestCompletion("notice", items).filter((item) => (
     (category === "all" || item.category === category)
+    && (status === "all" || (status === "completed" ? item.isCompleted === true : item.isCompleted !== true))
     && (!keyword || `${item.title} ${item.content} ${item.source}`.toLowerCase().includes(keyword))
   )));
 }
@@ -180,7 +186,7 @@ function createGuestHabitItems(category = "behavior") {
       checkInItems: [{ name: "阅读30分钟" }, { name: "记录一句话" }],
     },
   ];
-  return cloneItems(items.filter((item) => item.category === category));
+  return cloneItems(items.filter((item) => category === "all" || item.category === category));
 }
 
 function createGuestPlanState(type = "daily", anchorDate = formatDate(new Date())) {
@@ -218,6 +224,18 @@ function createGuestPlanState(type = "daily", anchorDate = formatDate(new Date()
   };
 }
 
+function createGuestTimetableEntries() {
+  return [
+    { dayOfWeek: 1, period: 1, courseName: "语文", teacher: "李老师", location: "初一（1）班", startTime: "08:00", endTime: "08:40" },
+    { dayOfWeek: 1, period: 2, courseName: "数学", teacher: "王老师", location: "初一（1）班", startTime: "08:50", endTime: "09:30" },
+    { dayOfWeek: 1, period: 3, courseName: "英语", teacher: "陈老师", location: "初一（1）班", startTime: "10:00", endTime: "10:40" },
+    { dayOfWeek: 2, period: 1, courseName: "历史", teacher: "", location: "", startTime: "", endTime: "" },
+    { dayOfWeek: 2, period: 2, courseName: "数学", teacher: "王老师", location: "初一（1）班", startTime: "08:50", endTime: "09:30" },
+    { dayOfWeek: 2, period: 3, courseName: "英语", teacher: "陈老师", location: "初一（1）班", startTime: "10:00", endTime: "10:40" },
+    { dayOfWeek: 2, period: 5, courseName: "政治", teacher: "周老师", location: "初一（1）班", startTime: "14:20", endTime: "15:00" },
+  ];
+}
+
 function requestFamilyAccess(message, wxApi) {
   if (!wxApi) throw new Error("Missing WeChat API for family access request");
   wxApi.showModal({
@@ -237,5 +255,6 @@ module.exports = {
   createGuestNoticeItems,
   createGuestHabitItems,
   createGuestPlanState,
+  createGuestTimetableEntries,
   requestFamilyAccess,
 };

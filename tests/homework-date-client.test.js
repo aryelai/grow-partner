@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { createRequire } = require("node:module");
-const { getBeijingDate } = require("../miniprogram/utils/date");
+const { getBeijingDate, formatHomeworkDate, shiftIsoDate } = require("../miniprogram/utils/date");
 
 function loadPage(pageName, item = {}) {
   const sourcePath = path.resolve(__dirname, `../miniprogram/pages/${pageName}/${pageName}.js`);
@@ -111,6 +111,28 @@ test("列表与详情正确展示作业日期并保留长主题全文", async ()
   assert.equal(legacy.page.data.items[0].homeworkDateMissing, true);
 });
 
+test("作业列表默认筛选北京时间今天且可按天或日期选择器切换", async () => {
+  const { page, calls } = loadPage("homework-list", {
+    _id: "homework-id", subject: "数学", homeworkDate: getBeijingDate(), title: "今日作业", content: "",
+  });
+  assert.equal(page.data.selectedDate, getBeijingDate());
+  assert.equal(page.data.selectedDateText, formatHomeworkDate(getBeijingDate()));
+
+  await page.load(true);
+  const initialList = calls.find((call) => call.name === "homework" && call.action === "list");
+  assert.equal(initialList.payload.homeworkDate, getBeijingDate());
+  assert.equal(Object.hasOwn(initialList.payload, "semester"), false);
+
+  await page.changeDate({ currentTarget: { dataset: { offset: "-1" } } });
+  assert.equal(page.data.selectedDate, shiftIsoDate(getBeijingDate(), -1));
+  assert.equal(calls.filter((call) => call.action === "list").at(-1).payload.homeworkDate, page.data.selectedDate);
+
+  await page.onDateChange({ detail: { value: "2026-10-08" } });
+  assert.equal(page.data.selectedDate, "2026-10-08");
+  assert.equal(page.data.selectedDateText, "2026-10-08 周四");
+  assert.equal(calls.filter((call) => call.action === "list").at(-1).payload.homeworkDate, "2026-10-08");
+});
+
 test("作业页面使用多行主题和醒目日期标签且空详细要求显示无", () => {
   for (const pageName of ["homework-edit", "homework-import"]) {
     const template = fs.readFileSync(path.resolve(__dirname, `../miniprogram/pages/${pageName}/${pageName}.wxml`), "utf8");
@@ -127,13 +149,26 @@ test("作业页面使用多行主题和醒目日期标签且空详细要求显�
     const style = fs.readFileSync(path.resolve(__dirname, `../miniprogram/pages/${pageName}/${pageName}.wxss`), "utf8");
     assert.match(style, /white-space: pre-wrap; word-break: break-all/);
   }
+  const listTemplate = fs.readFileSync(path.resolve(__dirname, "../miniprogram/pages/homework-list/homework-list.wxml"), "utf8");
+  assert.match(listTemplate, /<date-calendar[^>]*value="\{\{selectedDate\}\}"[^>]*bindchange="onDateChange"/);
+  assert.match(listTemplate, /\{\{selectedDateText\}\}/);
+  assert.match(listTemplate, /bindtap="changeDate"/);
+  assert.doesNotMatch(listTemplate, /当前学期/);
+  assert.match(listTemplate, /按科目筛选/);
+  assert.match(listTemplate, /homework-label-value">\{\{homework.subject\}\}/);
+  assert.match(listTemplate, /homework-label-value">\{\{homework.homeworkDateText\}\}/);
+  assert.doesNotMatch(listTemplate, /homework-label-caption/);
 });
 
-test("作业列表底部操作区留有安全区且不以悬浮按钮遮挡日期标签", () => {
+test("作业顶部操作始终可访问，完成反馈留有安全区且不遮挡末条卡片", () => {
   const template = fs.readFileSync(path.resolve(__dirname, "../miniprogram/pages/homework-list/homework-list.wxml"), "utf8");
   const style = fs.readFileSync(path.resolve(__dirname, "../miniprogram/pages/homework-list/homework-list.wxss"), "utf8");
-  assert.match(template, /class="homework-actions"/);
+  assert.match(template, /class="list-toolbar"/);
+  assert.match(template, /bindtap="showMore"/);
+  assert.match(template, /catchtap="toggleCompleted"/);
+  assert.doesNotMatch(template, /homework-actions/);
   assert.doesNotMatch(template, /class="fab"/);
-  assert.match(style, /\.homework-page\.has-actions \{ padding-bottom: calc\(160rpx \+ env\(safe-area-inset-bottom\)\)/);
-  assert.doesNotMatch(style, /position: sticky/);
+  assert.match(style, /\.homework-page\.has-feedback \{ padding-bottom: calc\(150rpx \+ env\(safe-area-inset-bottom\)\)/);
+  const sharedStyle = fs.readFileSync(path.resolve(__dirname, "../miniprogram/app.wxss"), "utf8");
+  assert.match(sharedStyle, /\.list-toolbar[^}]*position: sticky; top: 0/);
 });

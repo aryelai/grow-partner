@@ -1,6 +1,6 @@
 .subject-list { border-top: 2rpx solid var(--border); }
 .subject-item { display: flex; align-items: center; justify-content: space-between; min-height: 112rpx; padding: 14rpx 0; border-bottom: 2rpx solid var(--border); box-sizing: border-box; }
-.subject-info { min-width: 0; margin-right: 18rpx; }
+.subject-info { flex: 1; min-width: 0; margin-right: 18rpx; }
 .subject-name { display: block; overflow: hidden; color: var(--text); font-size: 29rpx; font-weight: 600; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 .subject-kind { display: block; margin-top: 4rpx; color: var(--text-light); font-size: 22rpx; line-height: 1.4; }
 .subject-actions { display: flex; flex: 0 0 auto; gap: 12rpx; }
@@ -13,3 +13,8 @@
 .add-row { display: flex; align-items: center; gap: 16rpx; }
 .add-row .input { flex: 1; min-width: 0; }
 .add-button { flex: 0 0 136rpx; width: 136rpx; padding: 0 16rpx; }
+.subject-order { display: flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; padding: 0; border-radius: 14rpx; color: #2868A8; background: #F0F5FA; font-size: 32rpx; line-height: 1; }
+.subject-order[disabled] { color: #A5AFB7; background: #F5F7F9; }
+.subject-order:active { opacity: .7; }
+.subject-delete { width: 100%; margin-top: 32rpx; }
+@media (max-width: 350px) { .subject-item { flex-wrap: wrap; gap: 12rpx; } .subject-info { flex-basis: 100%; } .subject-actions { margin-left: auto; } }

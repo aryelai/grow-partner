@@ -77,7 +77,7 @@ Page({
         currentSemester: CURRENT_SEMESTER,
       });
       await showInviteCode(result.inviteCodeDisplay, result.inviteCode);
-      wx.switchTab({ url: "/pages/homework-list/homework-list" });
+      wx.switchTab({ url: "/pages/home/home" });
     } catch (error) {
       showError(error, "家庭创建失败");
     } finally {

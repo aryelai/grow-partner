@@ -1,0 +1,27 @@
+<view class="page timetable-page {{canUseImport ? 'has-actions' : ''}}">
+  <guest-banner wx:if="{{guestMode}}" />
+  <view class="card timetable-heading">
+    <view><view class="section-title compact-title">本学期课程表</view><view class="semester-label">{{semester}}</view></view>
+    <view class="heading-tip">{{canManage ? '点击课程或空节次即可编辑' : '家庭共享，只读查看'}}</view>
+  </view>
+
+  <scroll-view class="day-scroll" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
+    <view class="day-row"><view wx:for="{{days}}" wx:key="value" class="day-tab {{selectedDay === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectDay"><text class="day-short">{{item.shortLabel}}</text><text>{{item.label}}</text></view></view>
+  </scroll-view>
+
+  <view class="slot-list" wx:if="{{!loading}}">
+    <view class="slot-card {{item.hasEntry ? 'filled' : 'empty-slot'}}" wx:for="{{slots}}" wx:key="period" data-period="{{item.period}}" bindtap="openSlot">
+      <view class="period-badge"><text class="period-number">{{item.period}}</text><text>节</text></view>
+      <view class="course-content" wx:if="{{item.hasEntry}}">
+        <view class="course-name">{{item.entry.courseName}}</view>
+        <view class="course-meta" wx:if="{{item.entry.teacher || item.entry.location}}">{{item.entry.teacher || '未填教师'}}<text wx:if="{{item.entry.location}}"> · {{item.entry.location}}</text></view>
+        <view class="course-time" wx:if="{{item.entry.startTime}}">{{item.entry.startTime}}–{{item.entry.endTime}}</view>
+      </view>
+      <view class="empty-course" wx:else>{{canManage ? '＋ 添加课程' : '暂无课程'}}</view>
+      <text class="slot-action" wx:if="{{canManage}}">›</text>
+    </view>
+  </view>
+  <view class="load-more" wx:if="{{loading}}">课程表加载中…</view>
+
+  <view class="timetable-actions" wx:if="{{canUseImport}}"><button class="ghost-button ai-import-button {{canImport ? '' : 'unavailable'}}" bindtap="importTimetable">从截图 AI 导入课程表</button></view>
+</view>

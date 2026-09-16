@@ -1,4 +1,5 @@
 {
-  "navigationBarTitleText": "习惯",
+  "navigationBarTitleText": "成长",
+  "usingComponents": { "plan-panel": "/components/plan-panel/plan-panel" },
   "enablePullDownRefresh": true
 }

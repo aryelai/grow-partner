@@ -1,0 +1,14 @@
+<view class="plan-panel">
+  <view class="plan-toolbar"><text class="panel-title">我的计划</text><button wx:if="{{canManage || guestMode}}" class="growth-add-button" bindtap="create">＋ 新增计划</button></view>
+  <view class="view-tabs"><view wx:for="{{types}}" wx:key="value" class="view-tab {{type === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectType">{{item.label}}计划</view></view>
+  <view class="date-nav"><button class="period-button" data-offset="-1" bindtap="shiftDate" disabled="{{toggleBusy}}" aria-label="上一周期">‹</button><view class="date-center"><view class="date-label">{{rangeLabel}}</view><view class="completion">{{doneTasks}} / {{totalTasks}} 项完成 · {{completionRate}}%</view></view><button class="period-button" data-offset="1" bindtap="shiftDate" disabled="{{toggleBusy}}" aria-label="下一周期">›</button></view>
+  <button wx:if="{{!isCurrentPeriod}}" class="today-button" bindtap="goToday" disabled="{{toggleBusy}}">回到今日</button>
+  <view class="growth-plan-card" wx:for="{{items}}" wx:for-item="plan" wx:key="_id">
+    <view class="plan-header"><view class="plan-heading"><text>{{plan.title}}</text><text class="plan-date">{{plan.date}}</text></view><button wx:if="{{canManage || guestMode}}" class="edit-button" data-id="{{plan._id}}" bindtap="edit">编辑</button></view>
+    <button class="growth-plan-item {{planItem.isDone ? 'done' : ''}} {{toggleBusy || loading ? 'disabled' : ''}}" wx:for="{{plan.items}}" wx:for-item="planItem" wx:for-index="itemIndex" wx:key="index" disabled="{{toggleBusy || loading}}" data-id="{{plan._id}}" data-index="{{itemIndex}}" bindtap="toggleTask" aria-label="{{planItem.isDone ? '撤销完成' : '标为完成'}}：{{planItem.text}}"><text class="growth-plan-check">✓</text><text class="item-text">{{planItem.text}}</text></button>
+    <view class="notes" wx:if="{{plan.notes}}">备注：{{plan.notes}}</view>
+  </view>
+  <view class="empty" wx:if="{{loadFailed}}">计划加载失败<button class="ghost-button" bindtap="load">重新加载</button></view>
+  <view class="empty" wx:if="{{!loading && !loadFailed && !items.length}}">这个时间范围还没有计划</view>
+  <view class="loading" wx:if="{{loading}}">加载中…</view>
+</view>

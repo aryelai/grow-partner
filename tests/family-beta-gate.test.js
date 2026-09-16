@@ -292,7 +292,7 @@ test("登录状态查询失败时显示可重试故障而不是注册关闭", as
   assert.equal(fixture.page.data.loadFailed, true);
 });
 
-test("家庭内测版只为 AI 作业导入开放临时截图选择", () => {
+test("家庭内测版只为已登记的 AI 导入页开放临时截图选择", () => {
   const pageFiles = [
     "miniprogram/pages/homework-edit/homework-edit.wxml",
     "miniprogram/pages/notice-edit/notice-edit.wxml",
@@ -316,7 +316,14 @@ test("家庭内测版只为 AI 作业导入开放临时截图选择", () => {
     assert.doesNotMatch(source, /wx\.cloud\.uploadFile|wx\.chooseMedia/);
   }
 
-  const importSource = fs.readFileSync(path.join(projectRoot, "miniprogram/pages/homework-import/homework-import.js"), "utf8");
-  assert.match(importSource, /wx\.chooseMedia/);
-  assert.doesNotMatch(importSource, /wx\.cloud\.uploadFile/);
+  const importFiles = [
+    "miniprogram/pages/homework-import/homework-import.js",
+    "miniprogram/pages/notice-import/notice-import.js",
+    "miniprogram/pages/timetable-import/timetable-import.js",
+  ];
+  for (const relativePath of importFiles) {
+    const importSource = fs.readFileSync(path.join(projectRoot, relativePath), "utf8");
+    assert.match(importSource, /wx\.chooseMedia/);
+    assert.doesNotMatch(importSource, /wx\.cloud\.uploadFile/);
+  }
 });

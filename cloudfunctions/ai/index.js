@@ -11,9 +11,14 @@ const {
   getBeijingDate,
   normalizeSubjects,
   validateImportScope,
+  validateImportType,
   extractModelPayload,
   normalizeModelDrafts,
+  normalizeNoticeDrafts,
+  normalizeTimetableDrafts,
   buildRecognitionPrompt,
+  buildNoticeRecognitionPrompt,
+  buildTimetableRecognitionPrompt,
   hashIdentifier,
 } = require("./core");
 
@@ -144,7 +149,7 @@ function createAiService(dependencies) {
       canImport: configuration.enabled && allowed,
       maxImages: MAX_IMAGES,
       maxImageBytes: MAX_IMAGE_BYTES,
-      blockedReason: configuration.enabled ? (allowed ? "" : "孩子账号不能使用 AI 导入") : "AI 作业导入尚未配置",
+      blockedReason: configuration.enabled ? (allowed ? "" : "孩子账号不能使用 AI 导入") : "AI 图片导入尚未配置",
     };
   }
 
@@ -153,7 +158,7 @@ function createAiService(dependencies) {
     return { index, cloudPath, fileId: "", mimeType: file.mimeType, size: file.size, extension: file.extension };
   }
 
-  async function reserveJob(user, configuration, files, importScope) {
+  async function reserveJob(user, configuration, files, importType, importScope) {
     const timestamp = now();
     const date = getBeijingDate(timestamp);
     const ownerHash = getOwnerHash(user.openid);
@@ -172,7 +177,7 @@ function createAiService(dependencies) {
       } });
       await transaction.collection("ai_import_jobs").doc(jobId).set({ data: {
         type: "job", jobId, ownerHash, familyId: user.familyId, status: "preparing",
-        importScope, files: jobFiles, expiresAt, cleanupRequired: false,
+        importType, importScope, files: jobFiles, expiresAt, cleanupRequired: false,
         createdAt: timestamp, updatedAt: timestamp,
       } });
     });
@@ -203,8 +208,9 @@ function createAiService(dependencies) {
     const user = await requireImporter(openid);
     const configuration = requireConfiguration();
     const files = validateImportFiles(input.files);
-    const importScope = validateImportScope(input.importScope);
-    const job = await reserveJob(user, configuration, files, importScope);
+    const importType = validateImportType(input.importType);
+    const importScope = importType === "homework" ? validateImportScope(input.importScope) : "auto";
+    const job = await reserveJob(user, configuration, files, importType, importScope);
     try {
       const uploads = [];
       for (const file of job.files) {
@@ -293,18 +299,42 @@ function createAiService(dependencies) {
       });
     }
     const recognitionDate = getBeijingDate(now());
-    const prompt = buildRecognitionPrompt({
-      date: recognitionDate,
-      semester: context.semester,
-      subjects: context.subjects,
-      importScope: validateImportScope(job.importScope),
-    });
+    const importType = validateImportType(job.importType);
+    let prompt;
+    if (importType === "notice") {
+      prompt = buildNoticeRecognitionPrompt({ date: recognitionDate, semester: context.semester });
+    } else if (importType === "timetable") {
+      prompt = buildTimetableRecognitionPrompt({
+        date: recognitionDate,
+        semester: context.semester,
+        subjects: context.subjects,
+      });
+    } else if (importType === "homework") {
+      prompt = buildRecognitionPrompt({
+        date: recognitionDate,
+        semester: context.semester,
+        subjects: context.subjects,
+        importScope: validateImportScope(job.importScope),
+      });
+    } else {
+      throw new Error("UNSUPPORTED_IMPORT_TYPE");
+    }
     const response = await modelGateway.generate(configuration, {
       max_tokens: MAX_MODEL_TOKENS,
       messages: [{ role: "user", content: [...imageParts, { type: "text", text: prompt }] }],
     });
     if (modelOutputTruncated(response, MAX_MODEL_TOKENS)) throw new Error("MODEL_OUTPUT_TRUNCATED");
-    return normalizeModelDrafts(extractModelPayload(getModelText(response)), {
+    const payload = extractModelPayload(getModelText(response));
+    if (importType === "notice") {
+      return normalizeNoticeDrafts(payload, { semester: context.semester, date: recognitionDate });
+    }
+    if (importType === "timetable") {
+      return normalizeTimetableDrafts(payload, {
+        semester: context.semester,
+        subjects: context.subjects,
+      });
+    }
+    return normalizeModelDrafts(payload, {
       ...context,
       date: recognitionDate,
       importScope: validateImportScope(job.importScope),
@@ -418,13 +448,14 @@ function failure(message) {
 const ERROR_MESSAGES = {
   UNAUTHORIZED: "请先登录并加入家庭",
   FORBIDDEN: "孩子账号不能使用 AI 导入",
-  CONFIGURATION: "AI 作业导入尚未配置",
+  CONFIGURATION: "AI 图片导入尚未配置",
   DAILY_LIMIT: "今日 AI 导入次数已达上限，请明天再试",
-  INVALID_FILE_COUNT: "请选择 1 至 3 张作业截图",
+  INVALID_FILE_COUNT: "请选择 1 至 3 张截图",
   INVALID_FILE_METADATA: "截图信息不完整",
   INVALID_FILE_TYPE: "仅支持 JPEG 或 PNG 截图",
   INVALID_FILE_SIZE: "单张截图不能超过 4 MB",
   INVALID_FILE_NAME: "截图文件名不正确",
+  INVALID_IMPORT_TYPE: "导入类型不正确，请重新进入导入页面",
   INVALID_IMPORT_SCOPE: "识别范围不正确，请重新选择",
   INVALID_JOB_ID: "导入任务编号不正确",
   JOB_FORBIDDEN: "导入任务不存在或无权访问",
@@ -437,10 +468,13 @@ const ERROR_MESSAGES = {
   IMAGE_SIZE_MISMATCH: "临时截图大小不一致，请重新导入",
   INVALID_MODEL_OUTPUT: "AI 识别结果格式异常，请重新尝试",
   MODEL_OUTPUT_TOO_LARGE: "AI 识别结果格式异常，请重新尝试",
-  MODEL_OUTPUT_TRUNCATED: "识别内容较多，请选择具体星期分批识别",
+  MODEL_OUTPUT_TRUNCATED: "识别内容较多，请减少截图或分批识别",
   INVALID_MODEL_JSON: "AI 识别结果格式异常，请重新尝试",
   INVALID_MODEL_STRUCTURE: "AI 识别结果格式异常，请重新尝试",
   NO_VALID_DRAFTS: "没有识别到可用作业，请更换清晰截图",
+  NO_VALID_NOTICE_DRAFTS: "没有识别到可用通知，请更换清晰截图",
+  NO_VALID_TIMETABLE_ENTRIES: "没有识别到可用课程，请更换清晰截图",
+  UNSUPPORTED_IMPORT_TYPE: "该类 AI 导入尚未开放",
   MODEL_AUTHENTICATION_FAILED: "AI 服务配置异常，请联系管理员",
   MODEL_RATE_LIMITED: "AI 服务繁忙或额度不足，请稍后重试",
   MODEL_REQUEST_FAILED: "AI 识别服务暂时不可用，请稍后重试",
@@ -450,7 +484,7 @@ const ERROR_MESSAGES = {
 
 function publicErrorMessage(error) {
   return ERROR_MESSAGES[error && error.message]
-    || "AI 作业导入暂时不可用，请稍后重试";
+    || "AI 图片导入暂时不可用，请稍后重试";
 }
 
 const service = createAiService({
@@ -471,7 +505,7 @@ exports.main = async (event = {}) => {
     switch (action) {
       case "getStatus": return success(await service.getStatus(OPENID));
       case "createImportJob": return success(await service.createImportJob(OPENID, event), "上传任务已创建");
-      case "analyzeImportJob": return success(await service.analyzeImportJob(OPENID, event), "作业识别完成");
+      case "analyzeImportJob": return success(await service.analyzeImportJob(OPENID, event), "图片识别完成");
       case "cancelImportJob": return success(await service.cancelImportJob(OPENID, event), "临时截图已清理");
       default: return failure("不支持的操作");
     }

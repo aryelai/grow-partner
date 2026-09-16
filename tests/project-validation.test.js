@@ -78,6 +78,10 @@ for (const [indexDescription, expectedError] of [
   ["users:                  familyId ASC, role ASC", /家庭成员物化查询索引缺失/],
   ["users:                  familyId ASC, openid ASC", /提醒接收人复核查询索引缺失/],
   ["homework:               familyId ASC, semester ASC, createdAt DESC", /AI 重复检查最近作业索引缺失/],
+  ["homework:               familyId ASC, homeworkDate ASC, createdAt DESC", /作业日期基础查询索引缺失/],
+  ["homework:               familyId ASC, homeworkDate ASC, isCompleted ASC, createdAt DESC", /作业日期状态查询索引缺失/],
+  ["homework:               familyId ASC, homeworkDate ASC, subject ASC, createdAt DESC", /作业日期科目查询索引缺失/],
+  ["homework:               familyId ASC, homeworkDate ASC, subject ASC, isCompleted ASC, createdAt DESC", /作业日期科目状态查询索引缺失/],
   ["reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC", /待提醒状态查询索引缺失/],
 ]) {
   test(`部署文档缺少 ${indexDescription.trim()} 会使项目静态校验失败`, () => {
@@ -127,7 +131,7 @@ test("非 AI 导入页发起媒体选择会使项目静态校验失败", () => {
     const clientPath = path.join(temporaryRoot, "miniprogram/pages/login/login.js");
     const source = fs.readFileSync(clientPath, "utf8");
     fs.writeFileSync(clientPath, `${source}\nfunction unsafeChooseMedia() { return wx.chooseMedia({}); }\n`);
-  }, (result) => assertValidationFailure(result, /只有 AI 作业导入页可以发起媒体选择/));
+  }, (result) => assertValidationFailure(result, /只有已注册的 AI 图片导入页可以发起媒体选择/));
 });
 
 for (const [requiredText, expectedError] of [
@@ -157,7 +161,7 @@ test("页面数量漂移会使项目静态校验失败", () => {
     const appConfig = JSON.parse(fs.readFileSync(appConfigPath, "utf8"));
     appConfig.pages.pop();
     fs.writeFileSync(appConfigPath, JSON.stringify(appConfig));
-  }, (result) => assertValidationFailure(result, /页面数量应为17个/));
+  }, (result) => assertValidationFailure(result, /页面数量应为22个/));
 });
 
 test("登录页恢复为默认首屏会使项目静态校验失败", () => {
@@ -167,7 +171,7 @@ test("登录页恢复为默认首屏会使项目静态校验失败", () => {
     const loginIndex = appConfig.pages.indexOf("pages/login/login");
     [appConfig.pages[0], appConfig.pages[loginIndex]] = [appConfig.pages[loginIndex], appConfig.pages[0]];
     fs.writeFileSync(appConfigPath, JSON.stringify(appConfig));
-  }, (result) => assertValidationFailure(result, /默认首屏必须允许游客浏览作业演示/));
+  }, (result) => assertValidationFailure(result, /默认首屏必须是允许游客浏览的首页/));
 });
 
 test("登录页恢复微信昵称授权输入会使项目静态校验失败", () => {
@@ -219,8 +223,34 @@ test("AI 导入页重复发起媒体选择会使项目静态校验失败", () =>
     const pagePath = path.join(temporaryRoot, "miniprogram/pages/homework-import/homework-import.js");
     const source = fs.readFileSync(pagePath, "utf8");
     fs.writeFileSync(pagePath, `${source}\nfunction unsafeSecondChooser() { return wx.chooseMedia({}); }\n`);
-  }, (result) => assertValidationFailure(result, /只有 AI 作业导入页可以发起媒体选择/));
+  }, (result) => assertValidationFailure(result, /只有已注册的 AI 图片导入页可以发起媒体选择/));
 });
+
+test("AI 通知导入页未注册会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const appConfigPath = path.join(temporaryRoot, "miniprogram/app.json");
+    const appConfig = JSON.parse(fs.readFileSync(appConfigPath, "utf8"));
+    const pageIndex = appConfig.pages.indexOf("pages/notice-import/notice-import");
+    appConfig.pages[pageIndex] = "pages/login/login";
+    fs.writeFileSync(appConfigPath, JSON.stringify(appConfig));
+  }, (result) => assertValidationFailure(result, /AI 通知导入页未在 app.json 注册/));
+});
+
+for (const [pagePath, expectedError] of [
+  ["pages/timetable/timetable", /课程表页未在 app.json 注册/],
+  ["pages/timetable-edit/timetable-edit", /课程编辑页未在 app.json 注册/],
+  ["pages/timetable-import/timetable-import", /AI 课程表导入页未在 app.json 注册/],
+]) {
+  test(`${pagePath} 未注册会使项目静态校验失败`, () => {
+    withProjectCopy((temporaryRoot) => {
+      const appConfigPath = path.join(temporaryRoot, "miniprogram/app.json");
+      const appConfig = JSON.parse(fs.readFileSync(appConfigPath, "utf8"));
+      const pageIndex = appConfig.pages.indexOf(pagePath);
+      appConfig.pages[pageIndex] = "pages/login/login";
+      fs.writeFileSync(appConfigPath, JSON.stringify(appConfig));
+    }, (result) => assertValidationFailure(result, expectedError));
+  });
+}
 
 test("通知详情页未注册会使项目静态校验失败", () => {
   withProjectCopy((temporaryRoot) => {
@@ -235,5 +265,13 @@ test("通知详情页未注册会使项目静态校验失败", () => {
 test("云函数数量漂移会使项目静态校验失败", () => {
   withProjectCopy((temporaryRoot) => {
     fs.rmSync(path.join(temporaryRoot, "cloudfunctions/ai"), { recursive: true, force: true });
-  }, (result) => assertValidationFailure(result, /云函数数量应为9个/));
+  }, (result) => assertValidationFailure(result, /云函数数量应为10个/));
+});
+
+test("部署文档缺少课程表集合会使项目静态校验失败", () => {
+  withProjectCopy((temporaryRoot) => {
+    const guidePath = path.join(temporaryRoot, "cloudfunctions/README.md");
+    const source = fs.readFileSync(guidePath, "utf8");
+    fs.writeFileSync(guidePath, source.replaceAll("timetables", "removed_collection"));
+  }, (result) => assertValidationFailure(result, /部署文档缺少课程表集合说明/));
 });

@@ -186,6 +186,23 @@ test("非法作业日期和超长主题在写入前被拒绝", async () => {
   assert.equal(fixture.getDocuments().size, 0);
 });
 
+test("作业列表按指定日期精确筛选且拒绝非法日期", async () => {
+  const fixture = loadHomeworkFunction({ homework: [
+    { _id: "today", familyId: "family-id", semester: "2026下", subject: "数学", homeworkDate: "2026-09-16", title: "今日作业", isCompleted: false, createdAt: new Date("2026-09-16T08:00:00.000Z"), createdBy: "openid-id" },
+    { _id: "yesterday", familyId: "family-id", semester: "2026下", subject: "数学", homeworkDate: "2026-09-15", title: "昨日作业", isCompleted: false, createdAt: new Date("2026-09-15T08:00:00.000Z"), createdBy: "openid-id" },
+  ] });
+
+  const result = await fixture.main({ action: "list", homeworkDate: "2026-09-16", status: "pending" });
+  assert.equal(result.success, true);
+  assert.equal(result.data.items.map((item) => item._id).join(","), "today");
+
+  for (const homeworkDate of ["2026-02-29", "2026-9-16", 20260916]) {
+    const invalid = await fixture.main({ action: "list", homeworkDate });
+    assert.equal(invalid.success, false);
+    assert.match(invalid.message, /作业日期/);
+  }
+});
+
 test("旧客户端新增默认今天且编辑不覆盖日期或补猜历史日期", async () => {
   const fixture = loadHomeworkFunction({ homework: [{
     _id: "legacy", familyId: "family-id", semester: "2026下", subject: "数学", title: "历史作业",

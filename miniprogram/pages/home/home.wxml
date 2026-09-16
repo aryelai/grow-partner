@@ -1,0 +1,89 @@
+<view class="page tab-page home-page">
+  <guest-banner wx:if="{{guestMode}}" />
+
+  <view class="home-lead">
+    <view class="home-lead-copy">
+      <view class="home-greeting">{{greeting}}，{{childName || '同学'}}</view>
+      <view class="home-date">{{dateLabel}} · {{weekdayLabel}}</view>
+    </view>
+    <view class="semester-chip">{{semester || '学期加载中'}}</view>
+  </view>
+
+  <view class="overview-card">
+    <view class="overview-item" bindtap="goHomework"><text class="overview-number">{{pendingHomeworkCount}}</text><text class="overview-label">待完成作业</text></view>
+    <view class="overview-item" bindtap="goNotices"><text class="overview-number">{{importantNoticeCount}}</text><text class="overview-label">待处理通知</text></view>
+    <view class="overview-item" bindtap="goHabits"><text class="overview-number">{{habits.done}}/{{habits.total}}</text><text class="overview-label">习惯已打卡</text></view>
+  </view>
+
+  <view class="home-load-tip" wx:if="{{partialFailure}}">部分数据暂未加载，下拉可重试</view>
+
+  <view class="home-section course-section">
+    <view class="home-section-heading"><text class="home-section-title">今日课程</text><view class="section-link" bindtap="goTimetable">完整课表 ›</view></view>
+    <view class="schedule-card" bindtap="goTimetable">
+      <block wx:if="{{schedule.hasEntries}}">
+        <view class="schedule-day-grid">
+          <view class="schedule-session" wx:for="{{schedule.sessions}}" wx:for-item="session" wx:key="key">
+            <view class="schedule-session-head"><text>{{session.label}}</text><text class="session-count">{{session.items.length}} 节课</text></view>
+            <view class="schedule-lesson {{lesson.isCurrent ? 'current' : ''}}" wx:for="{{session.items}}" wx:for-item="lesson" wx:key="period">
+              <text class="schedule-lesson-index">{{lesson.period}}</text>
+              <view class="schedule-lesson-copy"><view class="schedule-lesson-name">{{lesson.courseName}}<text class="schedule-current-label" wx:if="{{lesson.isCurrent}}">当前</text></view><view class="schedule-lesson-time">{{lesson.timeText}}</view></view>
+            </view>
+            <view class="session-empty" wx:if="{{!session.items.length}}">暂无课程</view>
+          </view>
+        </view>
+      </block>
+      <view class="schedule-empty" wx:else><view class="schedule-empty-title">{{schedule.stateText}}</view><view class="schedule-empty-note">点击查看或完善本学期课程表</view></view>
+    </view>
+  </view>
+
+  <view class="home-section">
+    <view class="home-section-heading"><text class="home-section-title">待完成作业</text><view class="section-link" bindtap="goHomework">查看全部 ›</view></view>
+    <view class="home-list-card" wx:if="{{homeworkItems.length}}">
+      <view class="home-task-row" wx:for="{{homeworkItems}}" wx:key="_id">
+        <button class="task-check-button" data-id="{{item._id}}" disabled="{{completionBusy}}" catchtap="toggleHomework" aria-label="标为完成：{{item.title}}"><text class="task-check">✓</text></button>
+        <view class="task-copy" data-id="{{item._id}}" bindtap="openHomework"><view class="task-title">{{item.title}}</view><view class="task-meta">{{item.homeworkDateText}}</view></view>
+        <view class="subject-badge" data-id="{{item._id}}" bindtap="openHomework">{{item.subject}}</view>
+      </view>
+    </view>
+    <view class="home-empty-card" wx:else><view class="empty-title">今天的待办已清空</view><view class="empty-note">新的作业会在这里优先显示</view></view>
+  </view>
+
+  <view class="home-section">
+    <view class="home-section-heading"><text class="home-section-title">重要通知</text><view class="section-link" bindtap="goNotices">全部通知 ›</view></view>
+    <view class="notice-highlight" wx:if="{{noticeItems.length}}" data-id="{{noticeItems[0]._id}}" bindtap="openNotice">
+      <view class="notice-symbol">告</view>
+      <view class="notice-copy"><view class="notice-title">{{noticeItems[0].title}}</view><view class="notice-meta">{{noticeItems[0].keyTimeLabel}} · {{noticeItems[0].keyTimeText}}</view></view>
+      <text class="chevron">›</text>
+    </view>
+    <view class="home-empty-card compact-empty" wx:else><view class="empty-title">暂无近期通知</view><view class="empty-note">新增通知后可设置家庭提醒</view></view>
+  </view>
+
+  <view class="home-section">
+    <view class="home-section-heading"><text class="home-section-title">今日成长</text><view class="section-link" bindtap="goHabits">进入成长 ›</view></view>
+    <view class="growth-row">
+      <view class="growth-card" bindtap="goPlans">
+        <view class="growth-heading"><text>今日计划</text><text class="growth-icon">计</text></view>
+        <view class="progress-track"><view class="progress-value" style="width: {{plan.percentage}}%;"></view></view>
+        <view class="growth-value">{{plan.total ? plan.done + '/' + plan.total + ' 项已完成' : '尚未制定计划'}}</view>
+        <view class="growth-note">{{plan.pendingText || '点击查看全部计划'}}</view>
+      </view>
+      <view class="growth-card" bindtap="goHabits">
+        <view class="growth-heading"><text>习惯打卡</text><text class="growth-icon success">习</text></view>
+        <view class="habit-preview" wx:if="{{habits.items.length}}"><view class="habit-chip {{item.completedToday ? 'done' : ''}}" wx:for="{{habits.items}}" wx:key="_id">{{item.name}}<text wx:if="{{item.completedToday}}"> ✓</text></view></view>
+        <view class="growth-note" wx:else>还没有启用中的习惯</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="home-section">
+    <view class="home-section-heading"><text class="home-section-title">快捷处理</text></view>
+    <view class="quick-row">
+      <view class="quick-action" bindtap="importHomework"><text class="quick-symbol">AI</text><text>导入作业</text></view>
+      <view class="quick-action" bindtap="importNotice"><text class="quick-symbol">告</text><text>导入通知</text></view>
+      <view class="quick-action" bindtap="createPlan"><text class="quick-symbol">＋</text><text>新增计划</text></view>
+    </view>
+  </view>
+
+  <view class="home-loading" wx:if="{{loading}}">首页数据加载中…</view>
+  <view class="completion-feedback" wx:if="{{undoId}}"><text class="completion-feedback-text">{{completionText}}</text><button bindtap="undoHomework" disabled="{{completionBusy}}">撤销</button><button bindtap="dismissCompletion">关闭</button></view>
+</view>

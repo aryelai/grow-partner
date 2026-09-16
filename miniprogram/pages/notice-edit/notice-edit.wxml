@@ -1,4 +1,9 @@
 <view class="page">
+  <view class="ai-draft-note" wx:if="{{aiDraftRequestId}}">
+    <view class="ai-draft-title">AI 通知草稿</view>
+    <view class="ai-draft-detail">请核对标题、来源、分类和正文后再保存。AI 不会自动开启提醒。</view>
+    <view class="ai-time-row" wx:if="{{aiSuggestedRemindTime}}"><view><view class="ai-time-label">识别到时间建议</view><view class="ai-time-value">{{aiSuggestedRemindTimeText}}</view></view><button class="ghost-button ai-time-button" bindtap="useAiSuggestion" disabled="{{submitting || initializing || initializationFailed}}">采用时间</button></view>
+  </view>
   <view class="card">
     <view class="field"><text class="field-label">标题 *</text><input class="input" maxlength="80" value="{{form.title}}" data-field="title" bindinput="onInput" placeholder="请输入通知标题" disabled="{{submitting || initializing || initializationFailed}}" /></view>
     <view class="field"><text class="field-label">来源</text><input class="input" maxlength="60" value="{{form.source}}" data-field="source" bindinput="onInput" placeholder="例如：班主任-王老师" disabled="{{submitting || initializing || initializationFailed}}" /></view>
@@ -6,6 +11,13 @@
     <view class="field"><text class="field-label">内容</text><textarea class="textarea" maxlength="3000" value="{{form.content}}" data-field="content" bindinput="onInput" disabled="{{submitting || initializing || initializationFailed}}" /></view>
     <view class="muted">家庭内测期间暂不支持新增附件，已有图片仍可查看。</view>
     <view class="image-grid"><view class="image-wrap" wx:for="{{form.images}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /><text wx:if="{{!submitting}}" data-index="{{index}}" bindtap="removeImage">×</text></view></view>
+  </view>
+  <view class="card">
+    <view class="switch-row"><text>事项时间</text><switch color="#397BC5" checked="{{eventEnabled}}" bindchange="toggleEvent" disabled="{{submitting || initializing || initializationFailed}}" /></view>
+    <view class="deadline-row" wx:if="{{eventEnabled}}"><picker mode="date" value="{{eventDate}}" bindchange="onEventDate" disabled="{{submitting || initializing || initializationFailed}}"><view class="picker">{{eventDate}}</view></picker><picker mode="time" value="{{eventClock}}" bindchange="onEventClock" disabled="{{submitting || initializing || initializationFailed}}"><view class="picker">{{eventClock}}</view></picker></view>
+    <view class="switch-row"><text>截止时间</text><switch color="#397BC5" checked="{{deadlineEnabled}}" bindchange="toggleDeadline" disabled="{{submitting || initializing || initializationFailed}}" /></view>
+    <view class="deadline-row" wx:if="{{deadlineEnabled}}"><picker mode="date" value="{{deadlineDate}}" bindchange="onDeadlineDate" disabled="{{submitting || initializing || initializationFailed}}"><view class="picker">{{deadlineDate}}</view></picker><picker mode="time" value="{{deadlineClock}}" bindchange="onDeadlineClock" disabled="{{submitting || initializing || initializationFailed}}"><view class="picker">{{deadlineClock}}</view></picker></view>
+    <view class="muted">事项与截止时间用于展示安排，不会自动开启微信提醒。</view>
   </view>
   <view class="card">
     <view class="switch-row"><text>定时提醒</text><switch color="#4A90D9" checked="{{reminderEnabled}}" bindchange="toggleReminder" disabled="{{submitting || initializing || initializationFailed}}" /></view>

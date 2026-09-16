@@ -1,0 +1,18 @@
+.course-position { display: flex; align-items: center; justify-content: center; gap: 18rpx; margin-bottom: 24rpx; padding: 28rpx; border-radius: 20rpx; background: linear-gradient(135deg, #4A90D9, #6AA7E4); color: #fff; box-shadow: 0 8rpx 24rpx rgba(74,144,217,.22); }
+.position-day { font-size: 36rpx; font-weight: 700; }
+.position-period { padding: 8rpx 16rpx; border-radius: 999rpx; background: rgba(255,255,255,.18); font-size: 25rpx; }
+.subject-scroll { width: 100%; white-space: nowrap; }
+.subject-row { display: inline-flex; padding-bottom: 8rpx; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; min-height: 88rpx; }
+.time-title { font-weight: 600; }
+.time-help { margin-top: 4rpx; font-size: 23rpx; }
+.time-row { display: flex; gap: 16rpx; margin-top: 22rpx; }
+.time-row picker { flex: 1; min-width: 0; }
+.time-row .picker { justify-content: space-between; }
+.picker-label { color: var(--text-light); font-size: 23rpx; }
+.save-button { margin-top: 26rpx; }
+.remove-button { margin-top: 18rpx; margin-bottom: 40rpx; }
+@media (max-width: 340px) {
+  .time-row { gap: 12rpx; }
+  .time-row .picker { padding: 0 18rpx; }
+}

@@ -8,6 +8,7 @@ const {
   MAX_IMAGE_BYTES,
   MAX_DRAFTS,
   validateSelectedFiles,
+  prepareEditedImage,
   uploadFileWithCredential,
   createEditableDrafts,
   createHomeworkPayload,
@@ -27,6 +28,28 @@ function imageFile(overrides = {}) {
   };
 }
 
+test("裁剪图片按真实字节校验且原生临时路径不必有扩展名", async () => {
+  const body = new Uint8Array([0xFF, 0xD8, 0xFF]).buffer;
+  const api = { getFileSystemManager() { return {
+    getFileInfo({ success }) { success({ size: 3 }); },
+    readFile({ success }) { success({ data: body }); },
+  }; } };
+  const result = await prepareEditedImage("wxfile://tmp/edited", 1, api);
+  assert.deepEqual(result, { tempFilePath: "wxfile://tmp/edited", name: "image-2.jpg", size: 3, mimeType: "image/jpeg" });
+});
+
+test("裁剪图片拒绝超限、无效格式及读取期间字节变化", async () => {
+  let readCount = 0;
+  const api = (size, bytes) => ({ getFileSystemManager() { return {
+    getFileInfo({ success }) { success({ size }); },
+    readFile({ success }) { readCount += 1; success({ data: new Uint8Array(bytes).buffer }); },
+  }; } });
+  await assert.rejects(prepareEditedImage("wxfile://tmp/a", 0, api(MAX_IMAGE_BYTES + 1, [])), /4 MB/);
+  assert.equal(readCount, 0);
+  await assert.rejects(prepareEditedImage("wxfile://tmp/a", 0, api(3, [1, 2, 3])), /JPEG、PNG/);
+  await assert.rejects(prepareEditedImage("wxfile://tmp/a", 0, api(4, [0xFF, 0xD8, 0xFF])), /发生变化/);
+});
+
 test("AI 作业导入权限只授予创建者和普通成员", () => {
   assert.equal(canPerform("creator", "importHomework"), true);
   assert.equal(canPerform("member", "importHomework"), true);
@@ -42,7 +65,7 @@ test("作业列表对有权限用户保留 AI 导入入口并由点击处理不�
   assert.match(source, /canPerform\(session\.user\.role,\s*"importHomework"\)/);
   assert.match(source, /if \(!this\.data\.canImport\)/);
   assert.match(source, /content:\s*this\.data\.importBlockedReason/);
-  assert.match(template, /wx:if="\{\{canUseImport\}\}"/);
+  assert.match(template, /wx:if="\{\{canUseImport \|\| guestMode\}\}"/);
   assert.doesNotMatch(template, /wx:if="\{\{canImport\}\}"/);
 });
 
@@ -320,6 +343,7 @@ function loadImportPage(overrides = {}) {
   const navigations = [];
   const toasts = [];
   const guards = [];
+  const application = { globalData: {} };
   const session = overrides.session || {
     user: { role: "creator", familyId: "family-id" },
     family: { currentSemester: "2026下", educationStage: "junior_high" },
@@ -334,14 +358,18 @@ function loadImportPage(overrides = {}) {
   const wxApi = {
     showToast(options) { toasts.push(options); },
     navigateBack() { navigations.push("back"); },
+    switchTab(options) { navigations.push(options.url); },
+    showModal(options) { if (overrides.showModal) overrides.showModal(options); },
     enableAlertBeforeUnload(options) { guards.push({ type: "enable", options }); },
     disableAlertBeforeUnload() { guards.push({ type: "disable" }); },
     chooseMedia: overrides.chooseMedia || (async () => ({ tempFiles: [] })),
+    editImage: overrides.editImage,
   };
   const moduleValue = { exports: {} };
   const context = vm.createContext({
     Page(config) { pageConfig = config; },
     wx: wxApi,
+    getApp() { return application; },
     console: { error() {} },
     Date,
     Promise,
@@ -357,6 +385,7 @@ function loadImportPage(overrides = {}) {
           MAX_IMAGE_BYTES,
           MAX_DRAFTS,
           validateSelectedFiles,
+          prepareEditedImage: overrides.prepareEditedImage || prepareEditedImage,
           uploadFileWithCredential: overrides.uploadFileWithCredential || (async () => {}),
           createEditableDrafts: require("../miniprogram/utils/ai-import").createEditableDrafts,
           createHomeworkPayload: require("../miniprogram/utils/ai-import").createHomeworkPayload,
@@ -380,8 +409,90 @@ function loadImportPage(overrides = {}) {
   for (const [name, value] of Object.entries(pageConfig)) {
     if (typeof value === "function") page[name] = value.bind(page);
   }
-  return { page, calls, navigations, toasts, guards };
+  return { page, calls, navigations, toasts, guards, application };
 }
+
+test("作业裁剪只替换选中图片且编辑中拒绝识别和重复编辑", async () => {
+  let finishEdit;
+  let editCount = 0;
+  const fixture = loadImportPage({
+    editImage(options) { editCount += 1; finishEdit = options.success; },
+    prepareEditedImage: async () => ({ tempFilePath: "wxfile://tmp/edited", name: "image-1.png", size: 8, mimeType: "image/png" }),
+  });
+  await fixture.page.onLoad();
+  fixture.page.setData({ selectedFiles: validateSelectedFiles([imageFile({ size: 3 }), imageFile({ tempFilePath: "/tmp/second.jpg", size: 4 })]) });
+  const event = { currentTarget: { dataset: { index: 0 } } };
+  const pending = fixture.page.cropScreenshot(event);
+  await fixture.page.cropScreenshot(event);
+  await fixture.page.recognize();
+  assert.equal(editCount, 1);
+  assert.equal(fixture.calls.filter((item) => item.action === "createImportJob").length, 0);
+  finishEdit({ tempFilePath: "wxfile://tmp/edited" });
+  await pending;
+  assert.equal(fixture.page.data.editingImage, false);
+  assert.equal(fixture.page.data.selectedFiles[0].tempFilePath, "wxfile://tmp/edited");
+  assert.equal(fixture.page.data.selectedFiles[1].tempFilePath, "/tmp/second.jpg");
+});
+
+test("取消裁剪、编辑结果不合法或卸载页面均保留原图", async () => {
+  for (const mode of ["cancel", "invalid", "unload"]) {
+    let finishEdit;
+    const fixture = loadImportPage({
+      editImage(options) { finishEdit = options; },
+      prepareEditedImage: async () => { throw new Error("裁剪图片仅支持 JPEG、PNG 格式"); },
+    });
+    await fixture.page.onLoad();
+    fixture.page.setData({ selectedFiles: validateSelectedFiles([imageFile({ size: 3 })]) });
+    const pending = fixture.page.cropScreenshot({ currentTarget: { dataset: { index: 0 } } });
+    if (mode === "cancel") finishEdit.fail({ errMsg: "editImage:fail cancel" });
+    else { if (mode === "unload") fixture.page.onUnload(); finishEdit.success({ tempFilePath: "wxfile://tmp/edited" }); }
+    await pending;
+    assert.equal(fixture.page.data.selectedFiles[0].tempFilePath, "/tmp/homework.jpg");
+    assert.equal(fixture.navigations.length, 0);
+    if (mode !== "unload") assert.equal(fixture.page.data.editingImage, false);
+  }
+});
+
+test("作业导入全部保存成功后返回列表并定位到最新导入日期", async () => {
+  const fixture = loadImportPage({ callFunction: async () => ({}) });
+  fixture.page.setData({ drafts: createEditableDrafts([
+    { subject: "语文", title: "阅读", homeworkDate: "2026-09-14" },
+    { subject: "数学", title: "练习", homeworkDate: "2026-09-15" },
+  ], ["语文", "数学"], "2026下", TEST_JOB_ID) });
+  await fixture.page.saveSelected();
+  assert.equal(fixture.navigations.at(-1), "/pages/homework-list/homework-list");
+  assert.equal(fixture.application.globalData.homeworkEntry.date, "2026-09-15");
+  assert.equal(fixture.guards.at(-1).type, "disable");
+});
+
+test("作业导入部分失败保留草稿且不自动返回", async () => {
+  const fixture = loadImportPage({ callFunction: async (name, action, data) => {
+    if (data.title === "失败项") throw new Error("保存失败");
+    return {};
+  } });
+  fixture.page.setData({ drafts: createEditableDrafts([
+    { subject: "语文", title: "成功项" }, { subject: "语文", title: "失败项" },
+  ], ["语文"], "2026下", TEST_JOB_ID) });
+  await fixture.page.saveSelected();
+  assert.equal(fixture.navigations.length, 0);
+  assert.equal(fixture.page.data.drafts[1].selected, true);
+  assert.equal(fixture.page.data.drafts[1].saved, false);
+});
+
+test("保存成功仍有未选择草稿时确认返回而不默默丢弃", async () => {
+  let confirmation;
+  const fixture = loadImportPage({ callFunction: async () => ({}), showModal(options) { confirmation = options; } });
+  const drafts = createEditableDrafts([{ subject: "语文", title: "甲" }, { subject: "语文", title: "乙" }], ["语文"], "2026下", TEST_JOB_ID);
+  drafts[1].selected = false;
+  fixture.page.setData({ drafts });
+  await fixture.page.saveSelected();
+  assert.equal(fixture.navigations.length, 0);
+  assert.match(confirmation.content, /未选择/);
+  confirmation.success({ confirm: false });
+  assert.equal(fixture.navigations.length, 0);
+  confirmation.success({ confirm: true });
+  assert.equal(fixture.navigations.at(-1), "/pages/homework-list/homework-list");
+});
 
 function createDeferred() {
   let resolve;
@@ -444,7 +555,7 @@ test("识别流程按顺序申请凭据、上传并识别但不自动保存", as
   await fixture.page.chooseScreenshots();
   await fixture.page.recognize();
 
-  assert.deepEqual(JSON.parse(JSON.stringify(events[2].options)), { count: 3, mediaType: ["image"], sourceType: ["album", "camera"], sizeType: ["original", "compressed"] });
+  assert.deepEqual(JSON.parse(JSON.stringify(events[2].options)), { count: 3, mediaType: ["image"], sourceType: ["album", "camera"], sizeType: ["original"] });
   assert.deepEqual(JSON.parse(JSON.stringify(events.filter((item) => item.type === "call" && item.action === "createImportJob")[0].data)), {
     importScope: "auto",
     files: [

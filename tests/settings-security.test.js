@@ -84,6 +84,28 @@ function loadSettingsFunction({ role, currentSettings, currentSubjects = null })
   };
 }
 
+test("科目排序只交换相邻位置并保留全部名称和顺序映射", async () => {
+  const fixture = loadSettingsFunction({ role: "creator", currentSubjects: { _id: "subjects-id", subjects: ["语文", "数学", "政治"] } });
+  const result = await fixture.main({ action: "moveSubject", subject: "政治", offset: -1 });
+  assert.equal(result.success, true);
+  assert.deepEqual([...result.data.subjects], ["语文", "政治", "数学"]);
+  assert.equal(fixture.getUpdatedSubjects().order["政治"], 1);
+});
+
+test("科目排序拒绝孩子、非法方向和不存在科目", async () => {
+  for (const request of [
+    { role: "child", subject: "数学", offset: -1 },
+    { role: "creator", subject: "数学", offset: "-1" },
+    { role: "creator", subject: "数学", offset: 9 },
+    { role: "creator", subject: "不存在", offset: -1 },
+  ]) {
+    const fixture = loadSettingsFunction({ role: request.role, currentSubjects: { _id: "subjects-id", subjects: ["语文", "数学"] } });
+    const result = await fixture.main({ action: "moveSubject", subject: request.subject, offset: request.offset });
+    assert.equal(result.success, false);
+    assert.equal(fixture.getUpdatedSubjects(), null);
+  }
+});
+
 test("普通成员修改设置时不能改写AI配置", async () => {
   const fixture = loadSettingsFunction({
     role: "member",

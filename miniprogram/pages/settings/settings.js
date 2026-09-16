@@ -57,7 +57,7 @@ Page({
   onShareAppMessage: createShareAppMessage,
   onShareTimeline: createShareTimelineMessage,
 
-  data: { family: null, settings: {}, stageName: "", birthdayText: "", inviteCodeText: "", isCreator: false, canEditSettings: false, providerLabels: providers.map((item) => item.label), providerIndex: 0, advanceDay: true, advanceHours: false, targetFather: true, targetMother: true, targetChild: false, reminderStatus: null, reminderStatusText: "", reminderStatusDetail: "", loadingReminderStatus: false, subscribing: false, saving: false, guestMode: false },
+  data: { family: null, settings: {}, childAvatarText: "", stageName: "", birthdayText: "", inviteCodeText: "", roleName: "", expandedSection: "", loading: true, loadFailed: false, isCreator: false, canEditSettings: false, providerLabels: providers.map((item) => item.label), providerIndex: 0, advanceDay: true, advanceHours: false, targetFather: true, targetMother: true, targetChild: false, reminderStatus: null, reminderStatusText: "", reminderStatusDetail: "", loadingReminderStatus: false, subscribing: false, saving: false, guestMode: false },
   async onShow() {
     let session;
     try {
@@ -73,9 +73,10 @@ Page({
     await this.load();
   },
   enterGuestMode() {
-    this.setData({ family: null, settings: {}, reminderStatus: null, isCreator: false, canEditSettings: false, guestMode: true });
+    this.setData({ family: null, settings: {}, reminderStatus: null, isCreator: false, canEditSettings: false, guestMode: true, loading: false, loadFailed: false, expandedSection: "" });
   },
   async load() {
+    this.setData({ loading: true, loadFailed: false });
     try {
       const settingsRequest = callFunction("settings", "get");
       const reminderStatusRequest = callFunction("reminder", "getStatus").catch((error) => {
@@ -89,11 +90,36 @@ Page({
       const settings = data.settings;
       const isCreator = data.currentRole === "creator";
       const reminderPresentation = getReminderStatusPresentation(reminderStatus);
-      this.setData({ family: data.family, settings, reminderStatus, reminderStatusText: reminderPresentation.text, reminderStatusDetail: reminderPresentation.detail, stageName: (EDUCATION_STAGES.find((item) => item.value === data.family.educationStage) || {}).label || data.family.educationStage, birthdayText: formatDate(data.family.childBirthday), inviteCodeText: formatInviteCode(data.family.inviteCode || ""), isCreator, canEditSettings: isCreator || (data.currentRole === "member" && settings.allowMemberEditSettings), providerIndex: Math.max(0, providers.findIndex((item) => item.value === settings.aiProvider)), advanceDay: settings.reminderDefaultAdvance.includes(1440), advanceHours: settings.reminderDefaultAdvance.includes(120), targetFather: settings.reminderTargets.includes("father"), targetMother: settings.reminderTargets.includes("mother"), targetChild: settings.reminderTargets.includes("child"), guestMode: false });
-    } catch (error) { showError(error, "设置加载失败"); }
+      const childAvatarText = Array.from(data.family.childNickname || data.family.childName || "孩")[0];
+      this.setData({ roleName: isCreator ? "家庭管理员" : data.currentRole === "child" ? "孩子账号" : "家庭成员" });
+      this.setData({ family: data.family, settings, childAvatarText, reminderStatus, reminderStatusText: reminderPresentation.text, reminderStatusDetail: reminderPresentation.detail, stageName: (EDUCATION_STAGES.find((item) => item.value === data.family.educationStage) || {}).label || data.family.educationStage, birthdayText: formatDate(data.family.childBirthday), inviteCodeText: formatInviteCode(data.family.inviteCode || ""), isCreator, canEditSettings: isCreator || (data.currentRole === "member" && settings.allowMemberEditSettings), providerIndex: Math.max(0, providers.findIndex((item) => item.value === settings.aiProvider)), advanceDay: settings.reminderDefaultAdvance.includes(1440), advanceHours: settings.reminderDefaultAdvance.includes(120), targetFather: settings.reminderTargets.includes("father"), targetMother: settings.reminderTargets.includes("mother"), targetChild: settings.reminderTargets.includes("child"), guestMode: false });
+    } catch (error) { this.setData({ loadFailed: true }); showError(error, "设置加载失败"); }
+    finally { this.setData({ loading: false }); }
   },
-  goMembers() { wx.navigateTo({ url: "/pages/family-members/family-members" }); },
-  goSubjects() { wx.navigateTo({ url: "/pages/subject-settings/subject-settings" }); },
+  requestSettingsAccess() {
+    wx.showModal({ title: "使用家庭设置", content: "登录并加入家庭后，可管理真实资料和服务设置。", confirmText: "去登录", cancelText: "继续体验", success(result) { if (result.confirm) wx.navigateTo({ url: "/pages/login/login" }); } });
+  },
+  goMembers() { if (this.data.guestMode) { this.requestSettingsAccess(); return; } wx.navigateTo({ url: "/pages/family-members/family-members" }); },
+  goSubjects() { if (this.data.guestMode) { this.requestSettingsAccess(); return; } wx.navigateTo({ url: "/pages/subject-settings/subject-settings" }); },
+  goTimetable() { wx.navigateTo({ url: "/pages/timetable/timetable" }); },
+  goPlans() { getApp().globalData.growthEntry = { view: "plan" }; wx.switchTab({ url: "/pages/habit-list/habit-list" }); },
+  toggleSection(event) {
+    if (this.data.saving || this.data.subscribing) return;
+    const section = event.currentTarget.dataset.section;
+    if (!["reminder", "ai", "general", "privacy"].includes(section)) return;
+    if (this.data.guestMode && section !== "privacy") { this.requestSettingsAccess(); return; }
+    const expandedSection = this.data.expandedSection === section ? "" : section;
+    this.setData({ expandedSection }, () => {
+      if (typeof wx.pageScrollTo === "function") wx.pageScrollTo({ selector: expandedSection ? ".settings-panel" : ".settings-group", duration: 200 });
+    });
+  },
+  openPrivacyContract() {
+    if (typeof wx.openPrivacyContract !== "function") { wx.showToast({ title: "请通过右上角菜单查看隐私保护指引", icon: "none" }); return; }
+    wx.openPrivacyContract({ fail(error) {
+      console.error("Open privacy contract failed", getErrorContext(error));
+      showError(createDisplayError(getErrorContext(error)), "暂时无法打开隐私保护指引，请稍后重试");
+    } });
+  },
   copyInviteCode() {
     if (!this.data.family.inviteCode) return;
     wx.setClipboardData({ data: this.data.family.inviteCode });

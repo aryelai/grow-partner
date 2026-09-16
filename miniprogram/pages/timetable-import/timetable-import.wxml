@@ -1,0 +1,33 @@
+<view class="page timetable-import-page">
+  <view class="card intro-card">
+    <view class="section-title">从课程表截图生成草稿</view>
+    <view class="muted intro-text">保留星期表头、节次和课程格。AI 结果需核对后才会合并到当前学期课程表。</view>
+    <view class="muted intro-text">课程名称独立于作业科目，自修、自习、班会等可直接保存，不必在科目管理里添加或强行匹配。</view>
+    <view class="privacy-note">截图仅用于本次识别，正常识别或取消后立即删除；异常情况下由云存储短期生命周期规则兜底删除，不保存为课程表附件。</view>
+    <view wx:if="{{blockedReason}}" class="blocked-note">{{blockedReason}}</view>
+  </view>
+
+  <view class="card" wx:if="{{enabled}}">
+    <view class="row between"><view><view class="section-title compact-title">选择截图</view><view class="muted">仅支持 JPEG、PNG，单张不超过 4 MB</view></view><button class="ghost-button select-button" disabled="{{processing || saving}}" bindtap="chooseScreenshot">{{selectedFiles.length ? '重新选择' : '选择截图'}}</button></view>
+    <view class="capture-guide">优先上传完整、横平竖直的原图；图片太长时可按星期分成 2–3 张，但每张都要保留星期和节次标识。</view>
+    <view class="preview-grid" wx:if="{{selectedFiles.length}}"><view class="preview-item" wx:for="{{selectedFiles}}" wx:key="tempFilePath"><image src="{{item.tempFilePath}}" mode="aspectFill" /><text>{{index + 1}}</text></view></view>
+    <button class="primary-button recognize-button" loading="{{processing}}" disabled="{{processing || saving || !selectedFiles.length}}" bindtap="recognize">开始识别</button>
+    <view class="progress-text" wx:if="{{progressText}}">{{progressText}}</view>
+  </view>
+
+  <view class="warning-card" wx:if="{{warnings.length}}"><view class="warning-title">识别提示</view><view class="warning-item" wx:for="{{warnings}}" wx:key="*this">• {{item}}</view></view>
+
+  <view class="draft-card {{item.willReplace ? 'will-replace' : ''}}" wx:for="{{drafts}}" wx:for-index="draftIndex" wx:key="localId">
+    <view class="draft-header"><view class="draft-check" data-index="{{draftIndex}}" bindtap="toggleDraft"><checkbox color="#4A90D9" checked="{{item.selected}}" disabled="{{saving}}" /><text>课程 {{draftIndex + 1}}</text></view><text class="position-badge">{{item.dayLabel}} · 第 {{item.period}} 节</text></view>
+    <view wx:if="{{item.willReplace}}" class="replace-note">将替换该节已有的“{{item.existingCourseName}}”，保存前会再次确认。</view>
+    <view wx:if="{{item.uncertainFields.length}}" class="uncertain-note">黄色字段存在不确定内容，请人工核对。</view>
+    <view wx:if="{{item.customCourse && !item.courseNameUncertain}}" class="muted intro-text">这是独立课程名称，可直接保存；如“体级”属于校内简称，可自行修改，不会自动映射成其他科目。</view>
+    <view class="position-row"><picker mode="selector" range="{{days}}" range-key="label" value="{{item.dayIndex}}" data-index="{{draftIndex}}" bindchange="onDayChange" disabled="{{saving}}"><view class="picker"><text>{{item.dayLabel}}</text><text class="picker-action">选择星期</text></view></picker><picker mode="selector" range="{{periods}}" value="{{item.periodIndex}}" data-index="{{draftIndex}}" bindchange="onPeriodChange" disabled="{{saving}}"><view class="picker"><text>第 {{item.period}} 节</text><text class="picker-action">选择节次</text></view></picker></view>
+    <view class="field {{item.courseNameUncertain ? 'uncertain-field' : ''}}"><text class="field-label">科目名称 *</text><input class="input" maxlength="20" value="{{item.courseName}}" data-index="{{draftIndex}}" data-field="courseName" bindinput="onDraftInput" disabled="{{saving}}" /><scroll-view scroll-x="{{true}}" class="subject-scroll"><view class="subject-row"><text wx:for="{{subjects}}" wx:for-item="subjectItem" wx:key="*this" class="tag {{item.courseName === subjectItem ? 'active' : ''}}" data-index="{{draftIndex}}" data-value="{{subjectItem}}" bindtap="selectSubject">{{subjectItem}}</text></view></scroll-view></view>
+    <view class="field {{item.teacherUncertain ? 'uncertain-field' : ''}}"><text class="field-label">教师</text><input class="input" maxlength="20" value="{{item.teacher}}" data-index="{{draftIndex}}" data-field="teacher" bindinput="onDraftInput" placeholder="可选" disabled="{{saving}}" /></view>
+    <view class="field {{item.locationUncertain ? 'uncertain-field' : ''}}"><text class="field-label">地点</text><input class="input" maxlength="30" value="{{item.location}}" data-index="{{draftIndex}}" data-field="location" bindinput="onDraftInput" placeholder="可选" disabled="{{saving}}" /></view>
+    <view class="time-section {{item.timeUncertain ? 'uncertain-field' : ''}}"><view class="switch-row"><text>记录上课时间</text><switch color="#4A90D9" checked="{{item.hasTime}}" data-index="{{draftIndex}}" bindchange="toggleTime" disabled="{{saving}}" /></view><view class="time-row" wx:if="{{item.hasTime}}"><picker mode="time" value="{{item.startTime}}" data-index="{{draftIndex}}" data-field="startTime" bindchange="onTime" disabled="{{saving}}"><view class="picker">{{item.startTime}}</view></picker><picker mode="time" value="{{item.endTime}}" data-index="{{draftIndex}}" data-field="endTime" bindchange="onTime" disabled="{{saving}}"><view class="picker">{{item.endTime}}</view></picker></view></view>
+  </view>
+
+  <view class="save-panel" wx:if="{{drafts.length}}"><view class="muted intro-text">只保存选中的课程。同一星期、同一节次已有课程时将先确认替换，其他课程保留。</view><button class="primary-button" loading="{{saving}}" disabled="{{saving || processing}}" bindtap="saveSelected">保存选中课程</button></view>
+</view>

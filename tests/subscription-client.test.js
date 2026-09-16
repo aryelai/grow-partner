@@ -136,6 +136,8 @@ function createNoticePage(sourceName, overrides = {}) {
       if (request === "../../utils/subscription") return subscription;
       if (request === "../../utils/share") return require("../miniprogram/utils/share");
       if (request === "../../utils/guest-experience") return require("../miniprogram/utils/guest-experience");
+      if (request === "../../utils/notice") return require("../miniprogram/utils/notice");
+      if (request === "../../utils/list-completion") return require("../miniprogram/utils/list-completion");
       throw new Error(`测试未实现依赖：${request}`);
     },
   });
@@ -271,6 +273,32 @@ test("通知编辑页初始化期间拒绝保存和输入", async () => {
   status.resolve({ enabled: true, templateId: "template-id", estimatedAvailableCount: 0, pendingCount: 0, blockedReason: "" });
   await loading;
   assert.equal(fixture.page.data.initializing, false);
+});
+
+test("AI 通知草稿默认不启用提醒且必须显式采用时间建议", () => {
+  const fixture = createNoticePage("notice-edit");
+  fixture.page.currentUser = { relation: "father", role: "creator" };
+  fixture.page.data.reminderStatus = { enabled: true, templateId: "template-id", estimatedAvailableCount: 0 };
+  fixture.page.data.form.remindTargets = ["father"];
+
+  fixture.page.applyAiDraft({
+    requestId: "01010101010101010101010101010101_0",
+    semester: "2026下",
+    title: "家长会",
+    source: "班主任",
+    category: "other",
+    content: "请提前到场",
+    suggestedRemindTime: "2026-09-21T11:00:00.000Z",
+  }, "2026下");
+
+  assert.equal(fixture.page.data.form.title, "家长会");
+  assert.equal(fixture.page.data.reminderEnabled, false);
+  assert.equal(fixture.page.data.aiSuggestedRemindTime, "2026-09-21T11:00:00.000Z");
+  fixture.page.useAiSuggestion();
+  assert.equal(fixture.page.data.reminderEnabled, true);
+  assert.equal(fixture.page.data.aiSuggestedRemindTime, "");
+  assert.match(fixture.page.data.remindDate, /^2026-09-(21|22)$/);
+  assert.match(fixture.page.data.remindTime, /^\d{2}:\d{2}$/);
 });
 
 test("提醒状态读取失败会记录受控上下文并降级保存", async () => {
@@ -480,6 +508,8 @@ test("保存挂起期间冻结全部交互并提交点击时快照", async () =>
   exerciseInteractions("保存阶段");
   assert.deepEqual(noticePayload, {
     ...clickedForm,
+    eventTime: null,
+    deadline: null,
     id: "",
     remindTime: new Date(2026, 8, 10, 8, 0).toISOString(),
   });

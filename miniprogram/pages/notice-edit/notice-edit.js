@@ -1,7 +1,7 @@
 const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { NOTICE_CATEGORIES, RELATIONS } = require("../../utils/constants");
-const { formatDate } = require("../../utils/date");
+const { formatDate, formatDateTime } = require("../../utils/date");
 const { canPerform } = require("../../utils/permissions");
 const { requestReminderSubscription, shouldRequestSubscription } = require("../../utils/subscription");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
@@ -87,6 +87,9 @@ Page({
     form: { semester: "2026下", title: "", source: "", category: "other", content: "", images: [], remindAdvance: [120], remindTargets: [] },
     reminderEnabled: false, reminderStatus: createUnavailableReminderStatus(), needsSubscription: false, initializing: false, initializationFailed: false,
     remindDate: formatDate(new Date()), remindTime: "08:00", submitting: false,
+    eventEnabled: false, eventDate: formatDate(new Date()), eventClock: "08:00",
+    deadlineEnabled: false, deadlineDate: formatDate(new Date()), deadlineClock: "18:00",
+    aiDraftRequestId: "", aiSuggestedRemindTime: "", aiSuggestedRemindTimeText: "",
   },
   async refreshPermission() {
     let session;
@@ -99,6 +102,7 @@ Page({
     return session;
   },
   async onLoad(options) {
+    this.bindAiDraftChannel(options);
     this.setData({ initializing: true, initializationFailed: false });
     try {
       const session = await this.refreshPermission();
@@ -118,8 +122,60 @@ Page({
         remindTargets: normalizeTargets(settings.reminderTargets),
       };
       this.setData({ id: options.id || "", form, reminderRelations: createReminderRelations(form.remindTargets), reminderStatus, needsSubscription: this.getSubscriptionNeed({ form, reminderStatus }) });
+      this.aiDraftReady = true;
+      if (this.pendingAiDraft) this.applyAiDraft(this.pendingAiDraft, session.family.currentSemester);
       if (options.id && !await this.load(options.id)) { this.setData({ initializationFailed: true }); wx.navigateBack(); }
     } finally { this.setData({ initializing: false }); }
+  },
+  bindAiDraftChannel(options = {}) {
+    if (options.source !== "ai" || typeof this.getOpenerEventChannel !== "function") return;
+    const eventChannel = this.getOpenerEventChannel();
+    if (!eventChannel || typeof eventChannel.on !== "function") return;
+    eventChannel.on("noticeDraft", (draft) => {
+      this.pendingAiDraft = draft;
+      if (this.aiDraftReady && this.data.form) this.applyAiDraft(draft, this.data.form.semester);
+    });
+  },
+  applyAiDraft(draft, currentSemester) {
+    if (!draft || typeof draft !== "object" || Array.isArray(draft)) return;
+    const requestId = typeof draft.requestId === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(draft.requestId)
+      ? draft.requestId : "";
+    const title = typeof draft.title === "string" ? draft.title.trim().slice(0, 80) : "";
+    if (!requestId || !title) return;
+    const category = NOTICE_CATEGORIES.some((item) => item.value === draft.category) ? draft.category : "other";
+    const suggestion = new Date(draft.suggestedRemindTime || "");
+    const suggestedRemindTime = Number.isNaN(suggestion.getTime()) ? "" : suggestion.toISOString();
+    const form = {
+      ...this.data.form,
+      semester: /^\d{4}(上|下)$/.test(String(currentSemester)) ? currentSemester : this.data.form.semester,
+      title,
+      source: typeof draft.source === "string" ? draft.source.trim().slice(0, 60) : "",
+      category,
+      content: typeof draft.content === "string" ? draft.content.trim().slice(0, 3000) : "",
+    };
+    this.setData({
+      form,
+      aiDraftRequestId: requestId,
+      aiSuggestedRemindTime: suggestedRemindTime,
+      aiSuggestedRemindTimeText: suggestedRemindTime ? formatDateTime(suggestedRemindTime) : "",
+      reminderEnabled: false,
+      needsSubscription: this.getSubscriptionNeed({ form, reminderEnabled: false }),
+    });
+  },
+  useAiSuggestion() {
+    if (this.isFormLocked() || !this.data.aiSuggestedRemindTime) return;
+    const suggestion = new Date(this.data.aiSuggestedRemindTime);
+    if (Number.isNaN(suggestion.getTime())) return;
+    const pad = (value) => String(value).padStart(2, "0");
+    const remindDate = `${suggestion.getFullYear()}-${pad(suggestion.getMonth() + 1)}-${pad(suggestion.getDate())}`;
+    const remindTime = `${pad(suggestion.getHours())}:${pad(suggestion.getMinutes())}`;
+    this.setData({
+      reminderEnabled: true,
+      remindDate,
+      remindTime,
+      aiSuggestedRemindTime: "",
+      needsSubscription: this.getSubscriptionNeed({ reminderEnabled: true }),
+    });
   },
   async load(id) {
     try {
@@ -141,6 +197,8 @@ Page({
       };
       this.setData({
         form,
+        ...this.getTimeFields("event", item.eventTime, "08:00"),
+        ...this.getTimeFields("deadline", item.deadline, "18:00"),
         reminderRelations: createReminderRelations(form.remindTargets),
         reminderEnabled,
         remindDate: formatDate(remind),
@@ -151,6 +209,21 @@ Page({
     } catch (error) { showError(error); return false; }
   },
   isFormLocked() { return this.data.initializing || this.data.initializationFailed || this.data.submitting; },
+  getTimeFields(prefix, value, fallbackClock) {
+    const timestamp = (value instanceof Date || typeof value === "string") && value ? getReminderTimestamp(value) : null;
+    const date = timestamp !== null ? new Date(timestamp) : new Date();
+    return {
+      [`${prefix}Enabled`]: timestamp !== null,
+      [`${prefix}Date`]: formatDate(date),
+      [`${prefix}Clock`]: timestamp !== null ? `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}` : fallbackClock,
+    };
+  },
+  toggleEvent(event) { if (!this.isFormLocked()) this.setData({ eventEnabled: event.detail.value }); },
+  toggleDeadline(event) { if (!this.isFormLocked()) this.setData({ deadlineEnabled: event.detail.value }); },
+  onEventDate(event) { if (!this.isFormLocked()) this.setData({ eventDate: event.detail.value }); },
+  onEventClock(event) { if (!this.isFormLocked()) this.setData({ eventClock: event.detail.value }); },
+  onDeadlineDate(event) { if (!this.isFormLocked()) this.setData({ deadlineDate: event.detail.value }); },
+  onDeadlineClock(event) { if (!this.isFormLocked()) this.setData({ deadlineClock: event.detail.value }); },
   getSubscriptionNeed(overrides = {}) {
     const form = overrides.form || this.data.form;
     const reminderStatus = overrides.reminderStatus || this.data.reminderStatus;
@@ -191,7 +264,10 @@ Page({
   },
   save() {
     if (this.saveInProgress || this.isFormLocked()) return;
-    const form = createFormSnapshot(this.data.form);
+    const eventTime = getRemindTime(this.data.eventEnabled, this.data.eventDate, this.data.eventClock);
+    const deadline = getRemindTime(this.data.deadlineEnabled, this.data.deadlineDate, this.data.deadlineClock);
+    if (eventTime === undefined || deadline === undefined) { wx.showToast({ title: "事项或截止时间格式不正确", icon: "none" }); return; }
+    const form = createFormSnapshot({ ...this.data.form, eventTime, deadline });
     const reminderEnabled = this.data.reminderEnabled;
     const reminderStatus = Object.freeze({ ...this.data.reminderStatus });
     if (!form.title.trim()) { wx.showToast({ title: "请填写通知标题", icon: "none" }); return; }
@@ -202,6 +278,7 @@ Page({
       id: this.data.id,
       form,
       remindTime,
+      clientRequestId: this.data.id ? "" : this.data.aiDraftRequestId,
       reminderStatus,
       shouldSubscribe: this.getSubscriptionNeed({ form, reminderStatus, reminderEnabled }),
     });
@@ -239,9 +316,20 @@ Page({
           } else subscriptionDenied = true;
         } catch (error) { console.error("Reminder subscription request failed", getErrorContext(error)); subscriptionDenied = true; }
       }
-      await callFunction("notice", snapshot.id ? "update" : "create", { ...snapshot.form, id: snapshot.id, remindTime: snapshot.remindTime });
+      await callFunction("notice", snapshot.id ? "update" : "create", {
+        ...snapshot.form,
+        id: snapshot.id,
+        remindTime: snapshot.remindTime,
+        ...(snapshot.clientRequestId ? { clientRequestId: snapshot.clientRequestId } : {}),
+      });
       if (recordFailed) wx.showToast({ title: "通知已保存，微信提醒授权记录失败，请到设置页重试", icon: "none" });
       else if (subscriptionDenied) wx.showToast({ title: "通知已保存，微信提醒未授权", icon: "none" });
+      if (this.data.aiDraftRequestId && typeof this.getOpenerEventChannel === "function") {
+        const eventChannel = this.getOpenerEventChannel();
+        if (eventChannel && typeof eventChannel.emit === "function") {
+          eventChannel.emit("noticeSaved", { requestId: this.data.aiDraftRequestId });
+        }
+      }
       wx.navigateBack();
     }
     catch (error) { showError(error, "通知保存失败"); }

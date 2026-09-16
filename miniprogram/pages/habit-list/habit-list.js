@@ -2,17 +2,26 @@ const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { HABIT_CATEGORIES } = require("../../utils/constants");
 const { formatDate } = require("../../utils/date");
+const { canPerform } = require("../../utils/permissions");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 const { GUEST_SEMESTER_LABEL, createGuestHabitItems, requestFamilyAccess } = require("../../utils/guest-experience");
 
-const categoryIcons = { behavior: "行", life: "生", study: "学" };
+const categoryIcons = { behavior: "check", life: "clock", study: "book" };
 
 Page({
   onShareAppMessage: createShareAppMessage,
   onShareTimeline: createShareTimelineMessage,
 
-  data: { categories: HABIT_CATEGORIES, selectedCategory: "behavior", semester: "2026下", items: [], loading: true, canManage: false, guestMode: false },
+  data: { categories: [{ value: "all", label: "全部" }, ...HABIT_CATEGORIES], selectedCategory: "all", semester: "2026下", items: [], loading: true, canManage: false, guestMode: false,
+    view: "habit", planEntryDate: "", creating: false, submitting: false, loadFailed: false,
+    habitTotal: 0, habitDone: 0, longestStreak: 0, habitProgressText: "", planSummary: "日 / 周 / 月计划",
+    habitForm: { name: "", category: "behavior", goal: "", targetDays: "21" }, habitCategories: HABIT_CATEGORIES },
   async onShow() {
+    const entry = getApp().globalData.growthEntry;
+    if (entry && ["habit", "plan"].includes(entry.view)) {
+      this.setData({ view: entry.view, planEntryDate: entry.date || "" });
+      getApp().globalData.growthEntry = null;
+    }
     let session;
     try {
       session = await requireFamily({ redirect: false });
@@ -24,28 +33,71 @@ Page({
     }
     if (!session) { this.enterGuestMode(); return; }
     this.currentUser = session.user;
-    this.setData({ semester: session.family.currentSemester, canManage: session.user.role !== "child", guestMode: false });
+    this.setData({ semester: session.family.currentSemester, canManage: canPerform(session.user.role, "manageHabit"), guestMode: false });
     await this.load();
+    this.refreshPlan();
   },
   enterGuestMode() {
     this.currentUser = null;
-    this.setData({ semester: GUEST_SEMESTER_LABEL, selectedCategory: "behavior", canManage: false, guestMode: true });
+    this.setData({ semester: GUEST_SEMESTER_LABEL, canManage: false, guestMode: true });
     this.load();
+    this.refreshPlan();
   },
-  onPullDownRefresh() { this.load().finally(() => wx.stopPullDownRefresh()); },
+  refreshPlan() {
+    const panel = typeof this.selectComponent === "function" && this.selectComponent("#growth-plan");
+    if (panel) return panel.refresh();
+  },
+  onPlanSummary(event) {
+    const summary = event.detail || {};
+    if (summary.isToday !== true || !Number.isInteger(summary.total) || !Number.isInteger(summary.done)
+      || summary.done < 0 || summary.total < summary.done) return;
+    this.setData({ planSummary: `今日 ${summary.done}/${summary.total} 已完成` });
+  },
+  selectView(event) {
+    if (this.data.submitting) return;
+    const view = event.currentTarget.dataset.value;
+    if (!["habit", "plan"].includes(view)) return;
+    this.setData({ view });
+  },
+  onPullDownRefresh() { Promise.resolve(this.data.view === "plan" ? this.refreshPlan() : this.load()).finally(() => wx.stopPullDownRefresh()); },
   async load() {
+    const version = this.loadVersion = (this.loadVersion || 0) + 1;
     if (this.data.guestMode) {
-      this.setData({ items: createGuestHabitItems(this.data.selectedCategory), loading: false });
+      this.applyHabits(createGuestHabitItems("all"));
+      this.setData({ loading: false, loadFailed: false });
       return;
     }
-    this.setData({ loading: true });
+    this.allHabitItems = [];
+    this.setData({ loading: true, loadFailed: false, items: [], habitTotal: 0, habitDone: 0, longestStreak: 0 });
     try {
-      const data = await callFunction("habit", "list", { semester: this.data.semester, category: this.data.selectedCategory, today: formatDate(new Date()), page: 1, pageSize: 50 });
-      this.setData({ items: data.items.map((item) => ({ ...item, categoryIcon: categoryIcons[item.category], checkInSummary: (item.checkInItems || []).map((entry) => entry.name).join(" + ") })) });
-    } catch (error) { showError(error, "习惯加载失败"); }
-    finally { this.setData({ loading: false }); }
+      const data = await callFunction("habit", "list", { semester: this.data.semester, category: "all", today: formatDate(new Date()), page: 1, pageSize: 50 });
+      if (version !== this.loadVersion) return;
+      this.applyHabits(data.items);
+    } catch (error) { if (version === this.loadVersion) { this.setData({ loadFailed: true }); showError(error, "习惯加载失败"); } }
+    finally { if (version === this.loadVersion) this.setData({ loading: false }); }
   },
-  selectCategory(event) { this.setData({ selectedCategory: event.currentTarget.dataset.value }); this.load(); },
+  applyHabits(value) {
+    this.allHabitItems = (Array.isArray(value) ? value : []).map((item) => ({ ...item,
+      categoryIcon: categoryIcons[item.category] || "leaf", completedToday: item.completedToday === true || item.streak > 0,
+      checkInSummary: (item.checkInItems || []).map((entry) => entry.name).join(" + ") }));
+    const habitTotal = this.allHabitItems.length;
+    const habitDone = this.allHabitItems.filter((item) => item.completedToday).length;
+    const longestStreak = this.allHabitItems.reduce((longest, item) => Math.max(longest, Number(item.streak) || 0), 0);
+    const habitProgressText = !habitTotal ? "从一个小习惯开始，记录每天的成长。"
+      : habitDone === habitTotal ? `今天 ${habitTotal} 项习惯全部完成，继续保持。`
+      : `今天已完成 ${habitDone} 项，再完成 ${habitTotal - habitDone} 项即可达成。`;
+    this.setData({ habitTotal, habitDone, longestStreak, habitProgressText });
+    this.filterHabits();
+  },
+  filterHabits() {
+    this.setData({ items: (this.allHabitItems || []).filter((item) => this.data.selectedCategory === "all" || item.category === this.data.selectedCategory) });
+  },
+  selectCategory(event) {
+    const value = event.currentTarget.dataset.value;
+    if (!this.data.categories.some((item) => item.value === value)) return;
+    this.setData({ selectedCategory: value });
+    this.filterHabits();
+  },
   openDetail(event) {
     if (this.data.guestMode) {
       const item = this.data.items.find((candidate) => candidate._id === event.currentTarget.dataset.id);
@@ -57,13 +109,32 @@ Page({
   },
   create() {
     if (this.data.guestMode) { requestFamilyAccess("登录后可创建习惯并记录家庭打卡进度。", wx); return; }
-    if (this.currentUser && this.currentUser.role === "child") { wx.showToast({ title: "孩子账号不能创建习惯", icon: "none" }); return; }
-    wx.showModal({ title: "添加习惯", editable: true, placeholderText: "例如：驼背矫正", success: async (result) => {
-      const name = (result.content || "").trim(); if (!result.confirm || !name) return;
-      const posture = name.includes("驼背");
-      const checkInItems = posture ? [{ name: "靠墙站立5分钟", required: true }, { name: "坐姿保持提醒", required: false }, { name: "背部拉伸操3组", required: true }] : [{ name: "完成今日目标", required: true }];
-      try { await callFunction("habit", "create", { name, category: this.data.selectedCategory, description: "", frequency: "daily", targetDays: posture ? 30 : 21, checkInItems, startDate: formatDate(new Date()), semester: this.data.semester, isActive: true, reward: "" }); await this.load(); }
-      catch (error) { showError(error, "习惯创建失败"); }
-    } });
+    if (!canPerform(this.currentUser && this.currentUser.role, "manageHabit")) return;
+    this.setData({ creating: true, habitForm: { name: "", category: this.data.selectedCategory === "all" ? "behavior" : this.data.selectedCategory, goal: "", targetDays: "21" } });
   },
+  cancelCreate() { if (!this.data.submitting) this.setData({ creating: false }); },
+  onHabitInput(event) {
+    const field = event.currentTarget.dataset.field;
+    if (!this.data.submitting && ["name", "goal", "targetDays"].includes(field)) this.setData({ [`habitForm.${field}`]: event.detail.value });
+  },
+  selectHabitCategory(event) { if (!this.data.submitting && HABIT_CATEGORIES.some((item) => item.value === event.currentTarget.dataset.value)) this.setData({ "habitForm.category": event.currentTarget.dataset.value }); },
+  async saveHabit() {
+    if (this.data.submitting || !canPerform(this.currentUser && this.currentUser.role, "manageHabit")) return;
+    const form = { ...this.data.habitForm };
+    const name = form.name.trim();
+    const goal = form.goal.trim();
+    const targetDays = /^\d{1,3}$/.test(form.targetDays) ? Number(form.targetDays) : 0;
+    if (!name || !goal || targetDays < 1 || targetDays > 365) { wx.showToast({ title: "请填写名称、每日目标和1–365天的目标", icon: "none" }); return; }
+    this.setData({ submitting: true });
+    try {
+      const session = await requireFamily({ redirect: false });
+      if (!session || !canPerform(session.user.role, "manageHabit") || session.user.familyId !== this.currentUser.familyId) { wx.showToast({ title: "家庭或权限已变化，请重新打开表单", icon: "none" }); return; }
+      await callFunction("habit", "create", { name, category: form.category, description: goal, frequency: "daily", targetDays,
+        checkInItems: [{ name: goal, required: true }], startDate: formatDate(new Date()), semester: this.data.semester, isActive: true, reward: "" });
+      this.setData({ creating: false, selectedCategory: "all" });
+      await this.load();
+    } catch (error) { showError(error, "习惯创建失败，请重试"); }
+    finally { this.setData({ submitting: false }); }
+  },
+  onUnload() { this.loadVersion = (this.loadVersion || 0) + 1; },
 });

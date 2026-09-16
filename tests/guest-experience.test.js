@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 const { createRequire } = require("node:module");
+const { getBeijingDate } = require("../miniprogram/utils/date");
 
 const projectRoot = path.resolve(__dirname, "..");
 const miniprogramRoot = path.join(projectRoot, "miniprogram");
@@ -65,9 +66,9 @@ function loadPage(relativePath, session = null) {
   return { page, callFunctionCalls, modalCalls, navigations };
 }
 
-test("默认首屏允许未注册用户浏览作业演示", () => {
+test("默认首屏允许未注册用户浏览首页演示", () => {
   const appConfig = JSON.parse(fs.readFileSync(path.join(miniprogramRoot, "app.json"), "utf8"));
-  assert.equal(appConfig.pages[0], "pages/homework-list/homework-list");
+  assert.equal(appConfig.pages[0], "pages/home/home");
 });
 
 test("运行时代码不包含手机号、微信头像或微信昵称授权入口", () => {
@@ -151,6 +152,9 @@ test("游客演示数据可按业务条件过滤且不包含云资源", () => {
     createGuestPlanState,
   } = require("../miniprogram/utils/guest-experience");
   assert.ok(createGuestHomeworkItems({ subject: "数学", status: "pending", keyword: "练习" }).length > 0);
+  const guestDate = getBeijingDate();
+  assert.ok(createGuestHomeworkItems({ subject: "全部", status: "all", homeworkDate: guestDate }).length > 0);
+  assert.equal(createGuestHomeworkItems({ subject: "全部", status: "all", homeworkDate: "2020-01-01" }).length, 0);
   assert.ok(createGuestNoticeItems({ category: "exam", keyword: "考试" }).length > 0);
   assert.ok(createGuestHabitItems("study").length > 0);
   assert.ok(createGuestPlanState("daily", "2026-09-14").items.length > 0);

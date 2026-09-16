@@ -1,11 +1,31 @@
-<view class="page habit-page">
+<view class="page tab-page habit-page">
   <guest-banner wx:if="{{guestMode}}" />
-  <view class="category-tabs"><view wx:for="{{categories}}" wx:key="value" class="category {{selectedCategory === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</view></view>
-  <view class="card habit-card" wx:for="{{items}}" wx:key="_id" data-id="{{item._id}}" bindtap="openDetail">
-    <view class="habit-header"><view><text class="habit-icon">{{item.categoryIcon}}</text><text class="habit-name">{{item.name}}</text></view><text class="streak">连续{{item.streak}}天</text></view>
-    <view class="description">{{item.description || item.checkInSummary}}</view>
-    <view class="progress-row"><view class="progress-track"><view class="progress-value" style="width: {{item.progress}}%;"></view></view><text>{{item.completedDays}}/{{item.targetDays}}天</text></view>
+  <view class="list-page-head"><view class="page-title">成长</view><view class="page-description">记录习惯，也把每天和每周的计划落到实处。</view></view>
+  <view class="growth-switch">
+    <button class="growth-switch-button {{view === 'habit' ? 'active' : ''}}" data-value="habit" bindtap="selectView" disabled="{{submitting}}" aria-label="习惯打卡，今日{{habitDone}}/{{habitTotal}}已完成"><view class="growth-switch-icon"><view class="ui-icon ui-icon-leaf"></view></view><view class="growth-switch-copy"><view class="growth-switch-title">习惯打卡</view><view class="growth-switch-meta">今日 {{habitDone}}/{{habitTotal}} 已完成</view></view></button>
+    <button class="growth-switch-button {{view === 'plan' ? 'active' : ''}}" data-value="plan" bindtap="selectView" disabled="{{submitting}}"><view class="growth-switch-icon"><view class="ui-icon ui-icon-plan"></view></view><view class="growth-switch-copy"><view class="growth-switch-title">计划安排</view><view class="growth-switch-meta">{{planSummary}}</view></view></button>
   </view>
-  <view class="empty" wx:if="{{!loading && !items.length}}">当前分类还没有习惯</view>
-  <button wx:if="{{canManage}}" class="fab" bindtap="create">＋</button>
+  <view wx:if="{{view === 'habit'}}">
+    <view class="habit-toolbar"><text class="panel-title">今日习惯</text><button wx:if="{{canManage || guestMode}}" class="growth-add-button" bindtap="create" disabled="{{submitting}}">＋ 新增习惯</button></view>
+    <view wx:if="{{creating}}" class="card habit-form">
+      <view class="form-title">新增习惯</view>
+      <view class="field"><text class="field-label">习惯名称 *</text><input class="input" value="{{habitForm.name}}" maxlength="40" data-field="name" bindinput="onHabitInput" disabled="{{submitting}}" placeholder="例如：每日阅读" /></view>
+      <view class="field"><text class="field-label">分类</text><view class="tag-group"><text wx:for="{{habitCategories}}" wx:key="value" class="tag {{habitForm.category === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectHabitCategory">{{item.label}}</text></view></view>
+      <view class="field"><text class="field-label">每日打卡目标 *</text><input class="input" value="{{habitForm.goal}}" maxlength="40" data-field="goal" bindinput="onHabitInput" disabled="{{submitting}}" placeholder="例如：阅读30分钟并记录收获" /></view>
+      <view class="field"><text class="field-label">目标天数 *</text><input class="input" type="number" value="{{habitForm.targetDays}}" maxlength="3" data-field="targetDays" bindinput="onHabitInput" disabled="{{submitting}}" placeholder="1–365天" /></view>
+      <view class="muted">每日目标会成为必选打卡项，可在习惯详情核对后打卡。</view>
+      <view class="form-actions"><button class="ghost-button" bindtap="cancelCreate" disabled="{{submitting}}">取消</button><button class="primary-button" bindtap="saveHabit" disabled="{{submitting}}" loading="{{submitting}}">保存习惯</button></view>
+    </view>
+    <view class="growth-category-filters"><button wx:for="{{categories}}" wx:key="value" class="filter-chip {{selectedCategory === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.value === 'all' ? '全部' : item.value === 'behavior' ? '行为' : item.value === 'life' ? '生活' : '学习'}}</button></view>
+    <view class="habit-hero" wx:if="{{!loading && !loadFailed}}"><view class="habit-hero-title">{{longestStreak ? '连续坚持 ' + longestStreak + ' 天' : '从今天开始坚持'}}</view><view class="habit-hero-note">{{habitProgressText}}</view><view class="habit-hero-caption" wx:if="{{longestStreak}}">以当前习惯最长连续打卡记录为准</view></view>
+    <view class="habit-card" wx:for="{{items}}" wx:key="_id" data-id="{{item._id}}" bindtap="openDetail" hover-class="habit-card-pressed">
+      <view class="habit-mark"><view class="ui-icon ui-icon-{{item.categoryIcon}}"></view></view>
+      <view class="habit-copy"><view class="habit-name">{{item.name}}</view><view class="habit-meta">连续 {{item.streak}} 天 · 目标 {{item.completedDays}}/{{item.targetDays}} 天</view></view>
+      <button class="checkin-button {{item.completedToday ? 'checked' : ''}}" data-id="{{item._id}}" catchtap="openDetail">{{item.completedToday ? '已打卡' : '去打卡'}}</button>
+    </view>
+    <view class="empty" wx:if="{{loadFailed}}">习惯加载失败<button class="ghost-button" bindtap="load">重新加载</button></view>
+    <view class="empty" wx:if="{{!loading && !loadFailed && !items.length}}">当前分类还没有习惯</view>
+    <view class="loading" wx:if="{{loading}}">加载中…</view>
+  </view>
+  <view hidden="{{view !== 'plan'}}"><plan-panel id="growth-plan" entry-date="{{planEntryDate}}" bindsummarychange="onPlanSummary"></plan-panel></view>
 </view>

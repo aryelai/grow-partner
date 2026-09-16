@@ -1,5 +1,6 @@
 {
   "navigationBarTitleText": "作业",
   "enablePullDownRefresh": true,
-  "backgroundColor": "#F5F6FA"
+  "backgroundColor": "#F5F6FA",
+  "usingComponents": { "date-calendar": "/components/date-calendar/index" }
 }

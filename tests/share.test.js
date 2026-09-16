@@ -16,13 +16,13 @@ test("所有已注册页面都启用统一的好友和朋友圈分享回调", ()
   }
 });
 
-test("好友分享统一进入游客可访问的作业首页且不携带家庭数据", () => {
+test("好友分享统一进入游客可访问的聚合首页且不携带家庭数据", () => {
   const { createShareAppMessage } = require("../miniprogram/utils/share");
   const message = createShareAppMessage();
 
   assert.deepEqual(message, {
     title: "尹尹成长搭档",
-    path: "/pages/homework-list/homework-list",
+    path: "/pages/home/home",
     imageUrl: "/images/share-card.png",
   });
   assert.doesNotMatch(JSON.stringify(message), /familyId|inviteCode|openid|recordId|[?&=]/i);

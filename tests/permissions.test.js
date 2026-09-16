@@ -15,6 +15,16 @@ test("普通成员只能删除自己录入的作业", () => {
 test("孩子只能执行允许的协作动作", () => {
   assert.equal(canPerform("child", "toggleHomework", {}), true);
   assert.equal(canPerform("child", "createHomework", {}), false);
+  assert.equal(canPerform("child", "manageTimetable", {}), false);
+  assert.equal(canPerform("child", "importTimetable", {}), false);
+});
+
+test("创建者和普通成员可维护并导入通知与课程表", () => {
+  for (const role of ["creator", "member"]) {
+    assert.equal(canPerform(role, "importNotice"), true);
+    assert.equal(canPerform(role, "manageTimetable"), true);
+    assert.equal(canPerform(role, "importTimetable"), true);
+  }
 });
 
 test("普通成员仅在创建者开启后修改普通设置", () => {
@@ -61,7 +71,7 @@ function loadPage(relativePath, overrides = {}) {
   const callFunction = async (...args) => {
     callFunctionCalls.push(args);
     if (args[0] === "settings") return { subjects: ["语文"] };
-    if (args[0] === "ai" && args[1] === "getStatus") return { enabled: false, canImport: false, blockedReason: "AI 作业导入尚未配置" };
+    if (args[0] === "ai" && args[1] === "getStatus") return { enabled: false, canImport: false, blockedReason: "AI 图片导入尚未配置" };
     if (args[0] === "homework") return { items: [], hasMore: false };
     if (args[0] === "notice") return { items: [], hasMore: false };
     if (args[0] === "plan") return { items: [] };
@@ -84,6 +94,7 @@ function loadPage(relativePath, overrides = {}) {
     stopPullDownRefresh() {},
   };
   const context = vm.createContext({
+    getApp() { return { globalData: {} }; },
     Page(config) { pageConfig = config; },
     wx,
     console,
@@ -120,6 +131,9 @@ const restrictedActions = [
   "deleteHomework",
   "manageNotice",
   "managePlan",
+  "importNotice",
+  "manageTimetable",
+  "importTimetable",
 ];
 
 test("孩子不能执行作业通知和计划的维护动作", () => {

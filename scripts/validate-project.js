@@ -4,8 +4,8 @@ const vm = require("node:vm");
 
 const projectRoot = path.resolve(__dirname, "..");
 const errors = [];
-const expectedPageCount = 17;
-const expectedCloudFunctionCount = 9;
+const expectedPageCount = 22;
+const expectedCloudFunctionCount = 10;
 const todoTemplateId = "5Iy1Jv7aswWNmrRMDXgrcj2BKeywdH6evDst6OomB2c";
 const mistypedTodoTemplateId = "5ly1Jv7aswWNmrRMDXgrcj2BKeywdH6evDst6OomB2c";
 const forbiddenCalendarTemplateId = "1fMjBkOzsEqXYVrQieX6ljtQ4lAKf8tIRn7GP2jDRew";
@@ -41,9 +41,13 @@ for (const file of [...files.filter((item) => item.endsWith(".json")), path.join
 
 const appConfig = JSON.parse(fs.readFileSync(path.join(projectRoot, "miniprogram/app.json"), "utf8"));
 if (appConfig.pages.length !== expectedPageCount) errors.push(`页面数量应为${expectedPageCount}个`);
-if (appConfig.pages[0] !== "pages/homework-list/homework-list") errors.push("默认首屏必须允许游客浏览作业演示");
+if (appConfig.pages[0] !== "pages/home/home") errors.push("默认首屏必须是允许游客浏览的首页");
 if (!appConfig.pages.includes("pages/notice-detail/notice-detail")) errors.push("通知详情页未在 app.json 注册");
 if (!appConfig.pages.includes("pages/homework-import/homework-import")) errors.push("AI 作业导入页未在 app.json 注册");
+if (!appConfig.pages.includes("pages/notice-import/notice-import")) errors.push("AI 通知导入页未在 app.json 注册");
+if (!appConfig.pages.includes("pages/timetable/timetable")) errors.push("课程表页未在 app.json 注册");
+if (!appConfig.pages.includes("pages/timetable-edit/timetable-edit")) errors.push("课程编辑页未在 app.json 注册");
+if (!appConfig.pages.includes("pages/timetable-import/timetable-import")) errors.push("AI 课程表导入页未在 app.json 注册");
 if (new Set(appConfig.pages).size !== appConfig.pages.length) errors.push("app.json 存在重复页面配置");
 for (const pagePath of appConfig.pages) {
   for (const extension of ["js", "json", "wxml", "wxss"]) {
@@ -134,6 +138,10 @@ for (const [indexDescription, errorMessage] of [
   ["users:                  familyId ASC, role ASC", "家庭成员物化查询索引缺失"],
   ["users:                  familyId ASC, openid ASC", "提醒接收人复核查询索引缺失"],
   ["homework:               familyId ASC, semester ASC, createdAt DESC", "AI 重复检查最近作业索引缺失"],
+  ["homework:               familyId ASC, homeworkDate ASC, createdAt DESC", "作业日期基础查询索引缺失"],
+  ["homework:               familyId ASC, homeworkDate ASC, isCompleted ASC, createdAt DESC", "作业日期状态查询索引缺失"],
+  ["homework:               familyId ASC, homeworkDate ASC, subject ASC, createdAt DESC", "作业日期科目查询索引缺失"],
+  ["homework:               familyId ASC, homeworkDate ASC, subject ASC, isCompleted ASC, createdAt DESC", "作业日期科目状态查询索引缺失"],
   ["reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC", "待提醒状态查询索引缺失"],
 ]) {
   if (!deploymentGuideText.includes(indexDescription)) errors.push(errorMessage);
@@ -152,7 +160,7 @@ if (/wx\.cloud\.uploadFile\s*\(/.test(runtimeSourceText)) errors.push("家庭内
 if (/getPhoneNumber|open-type=["']chooseAvatar["']|type=["']nickname["']/.test(runtimeSourceText)) {
   errors.push("运行时代码不得在浏览前请求手机号、微信头像或微信昵称授权");
 }
-const guestPagePaths = ["homework-list", "notice-list", "habit-list", "plan-list", "settings"];
+const guestPagePaths = ["home", "homework-list", "notice-list", "habit-list", "plan-list", "settings"];
 for (const pageName of guestPagePaths) {
   const pageBase = path.join(projectRoot, "miniprogram/pages", pageName, pageName);
   const script = fs.readFileSync(`${pageBase}.js`, "utf8");
@@ -168,20 +176,25 @@ if (!loginTemplate.includes('bindtap="continueExperience"') || !loginScript.incl
   errors.push("登录页缺少继续体验出口");
 }
 const shareScript = fs.readFileSync(path.join(projectRoot, "miniprogram/utils/share.js"), "utf8");
-if (!shareScript.includes('path: "/pages/homework-list/homework-list"')) errors.push("分享入口必须落到游客可浏览首页");
+if (!shareScript.includes('path: "/pages/home/home"')) errors.push("分享入口必须落到游客可浏览首页");
 const mediaSelectionFiles = runtimeFiles.filter((item) => item.endsWith(".js") && /wx\.chooseMedia\s*\(/.test(fs.readFileSync(item, "utf8")));
-const allowedMediaSelectionFile = path.join(projectRoot, "miniprogram/pages/homework-import/homework-import.js");
-const mediaSelectionCallCount = fs.existsSync(allowedMediaSelectionFile)
-  ? (fs.readFileSync(allowedMediaSelectionFile, "utf8").match(/wx\.chooseMedia\s*\(/g) || []).length
-  : 0;
-if (mediaSelectionFiles.length !== 1 || mediaSelectionFiles[0] !== allowedMediaSelectionFile || mediaSelectionCallCount !== 1) {
-  errors.push("只有 AI 作业导入页可以发起媒体选择");
+const allowedMediaSelectionFiles = [
+  path.join(projectRoot, "miniprogram/pages/homework-import/homework-import.js"),
+  path.join(projectRoot, "miniprogram/pages/notice-import/notice-import.js"),
+  path.join(projectRoot, "miniprogram/pages/timetable-import/timetable-import.js"),
+];
+const mediaSelectionValid = mediaSelectionFiles.length === allowedMediaSelectionFiles.length
+  && allowedMediaSelectionFiles.every((file) => mediaSelectionFiles.includes(file)
+    && (fs.readFileSync(file, "utf8").match(/wx\.chooseMedia\s*\(/g) || []).length === 1);
+if (!mediaSelectionValid) {
+  errors.push("只有已注册的 AI 图片导入页可以发起媒体选择且每页只能调用一次");
 }
 if (!deploymentGuideText.includes("REGISTRATION_MODE=family_invite")) errors.push("部署文档缺少家庭邀请码注册模式");
 if (!deploymentGuideText.includes('"write": "false"')) errors.push("部署文档缺少云存储客户端禁写规则");
 if (!deploymentGuideText.includes("ai_import_jobs") || !deploymentGuideText.includes("AI_MODEL") || !deploymentGuideText.includes("AI_DAILY_LIMIT")) {
   errors.push("部署文档缺少 AI 作业导入配置");
 }
+if (!deploymentGuideText.includes("timetables")) errors.push("部署文档缺少课程表集合说明");
 
 if (errors.length) {
   for (const error of errors) console.error(error);

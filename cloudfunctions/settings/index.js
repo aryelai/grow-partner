@@ -126,7 +126,30 @@ async function getSubjects(user) {
   const result = await db.collection("subjects").where({ familyId: user.familyId, educationStage: family.educationStage, grade: family.grade }).limit(1).get();
   const record = result.data[0];
   const subjects = record ? record.subjects : DEFAULT_SUBJECTS[family.educationStage] || [];
-  return success({ subjects, defaultSubjects: DEFAULT_SUBJECTS[family.educationStage] || [], customSubjects: record ? record.customSubjects || [] : [] });
+  return success({ subjects, defaultSubjects: DEFAULT_SUBJECTS[family.educationStage] || [], customSubjects: record ? record.customSubjects || [] : [], canManageSubjects: user.role === "creator" || (user.role === "member" && family.allowMemberEditSettings === true) });
+}
+
+async function moveSubject(user, event) {
+  const family = await getFamily(user);
+  if (user.role !== "creator" && !(user.role === "member" && family.allowMemberEditSettings === true)) return failure("您没有管理科目的权限");
+  if (![-1, 1].includes(event.offset)) return failure("科目移动方向不正确");
+  const subject = cleanText(event.subject, 10);
+  const defaults = DEFAULT_SUBJECTS[family.educationStage] || [];
+  const result = await db.collection("subjects").where({ familyId: user.familyId, educationStage: family.educationStage, grade: family.grade }).limit(1).get();
+  const record = result.data[0];
+  const current = record && Array.isArray(record.subjects) ? record.subjects : defaults;
+  const index = current.indexOf(subject);
+  if (index < 0) return failure("科目不存在，请刷新后重试");
+  const target = index + event.offset;
+  if (target < 0 || target >= current.length) return failure("科目已在最前或最后");
+  const subjects = current.slice();
+  [subjects[index], subjects[target]] = [subjects[target], subjects[index]];
+  const customSubjects = subjects.filter((item) => !defaults.includes(item));
+  const order = Object.fromEntries(subjects.map((item, position) => [item, position]));
+  const data = { familyId: user.familyId, educationStage: family.educationStage, grade: family.grade, subjects, customSubjects, order, updatedAt: new Date() };
+  if (record) await db.collection("subjects").doc(record._id).update({ data });
+  else await db.collection("subjects").add({ data });
+  return success({ subjects, defaultSubjects: defaults, customSubjects }, "科目顺序已更新");
 }
 
 async function changeSubject(user, event, removing) {
@@ -204,6 +227,7 @@ exports.main = async (event = {}) => {
       case "addSubject": return await changeSubject(user, event, false);
       case "removeSubject": return await changeSubject(user, event, true);
       case "renameSubject": return await renameSubject(user, event);
+      case "moveSubject": return await moveSubject(user, event);
       default: return failure("不支持的操作");
     }
   } catch (error) {

@@ -6,6 +6,7 @@ const { formatHomeworkDate } = require("../../utils/date");
 const {
   MAX_DRAFTS,
   validateSelectedFiles,
+  prepareEditedImage,
   uploadFileWithCredential,
   createEditableDrafts,
   createHomeworkPayload,
@@ -43,6 +44,7 @@ Page({
     saveProgress: "",
     processing: false,
     saving: false,
+    editingImage: false,
   },
 
   async refreshPermission() {
@@ -108,7 +110,7 @@ Page({
 
   changeImportScope(event) {
     const importScope = event && event.detail && event.detail.value;
-    if (this.data.processing || this.data.saving) return;
+    if (this.data.processing || this.data.saving || this.data.editingImage) return;
     if (!IMPORT_SCOPE_OPTIONS.some((item) => item.value === importScope)) return;
     if (this.data.drafts.some((draft) => !draft.saved)) {
       wx.showToast({ title: "请先处理当前识别草稿", icon: "none" });
@@ -126,7 +128,7 @@ Page({
       wx.showToast({ title: this.data.blockedReason || "AI 作业导入暂不可用", icon: "none" });
       return;
     }
-    if (this.data.processing || this.data.saving) return;
+    if (this.data.processing || this.data.saving || this.data.editingImage) return;
     if (this.data.drafts.some((draft) => !draft.saved)) {
       wx.showToast({ title: "请先处理当前识别草稿", icon: "none" });
       return;
@@ -137,8 +139,9 @@ Page({
         count: 3,
         mediaType: ["image"],
         sourceType: ["album", "camera"],
-        sizeType: ["original", "compressed"],
+        sizeType: ["original"],
       });
+      if (this.pageDestroyed) return;
       const selectedFiles = validateSelectedFiles(result.tempFiles);
       this.disableUnloadGuard();
       this.setData({
@@ -155,8 +158,30 @@ Page({
     }
   },
 
+  async cropScreenshot(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    if (!Number.isInteger(index) || !this.data.selectedFiles[index] || this.data.processing || this.data.saving || this.data.editingImage || this.pageDestroyed) return;
+    if (!canPerform(this.currentUser && this.currentUser.role, "importHomework")) return;
+    if (this.data.drafts.some((draft) => !draft.saved)) { wx.showToast({ title: "请先处理当前识别草稿", icon: "none" }); return; }
+    if (typeof wx.editImage !== "function") { wx.showToast({ title: "请在相册中裁剪后重新选择", icon: "none" }); return; }
+    this.setData({ editingImage: true });
+    try {
+      const result = await new Promise((resolve, reject) => wx.editImage({ src: this.data.selectedFiles[index].tempFilePath, success: resolve, fail: reject }));
+      if (this.pageDestroyed) return;
+      const edited = await prepareEditedImage(result.tempFilePath, index, wx);
+      if (this.pageDestroyed) return;
+      const selectedFiles = this.data.selectedFiles.slice();
+      selectedFiles[index] = edited;
+      this.setData({ selectedFiles, drafts: [], warnings: [], summary: null, phase: "selected", progressText: "已裁剪，请保留科目、星期和完整字迹后开始识别", saveProgress: "" });
+    } catch (error) {
+      if (!this.pageDestroyed && !/cancel/i.test(String(error.errMsg || error.message))) showError(error, "图片编辑失败，原图已保留");
+    } finally {
+      if (!this.pageDestroyed) this.setData({ editingImage: false });
+    }
+  },
+
   async recognize() {
-    if (this.recognizeInProgress || this.data.processing || !this.data.selectedFiles.length) return;
+    if (this.recognizeInProgress || this.data.processing || this.data.saving || this.data.editingImage || !this.data.selectedFiles.length) return;
     this.recognizeInProgress = true;
     this.setData({ processing: true });
     let jobId = "";
@@ -350,7 +375,7 @@ Page({
   },
 
   async saveSelected() {
-    if (this.saveInProgress || this.data.saving || this.data.processing) return;
+    if (this.saveInProgress || this.returningToHomework || this.data.saving || this.data.processing || this.data.editingImage) return;
     this.saveInProgress = true;
     this.setData({ saving: true });
     try {
@@ -391,10 +416,35 @@ Page({
       this.setData({ saveProgress });
       this.updateUnloadGuard();
       wx.showToast({ title: failedCount ? "部分作业保存失败" : "选中作业已保存", icon: failedCount ? "none" : "success" });
+      if (!failedCount) {
+        const remaining = drafts.filter((draft) => !draft.saved).length;
+        if (remaining) {
+          wx.showModal({
+            title: "选中作业已保存",
+            content: `还有 ${remaining} 条未选择的草稿不会保存。返回作业列表，还是继续编辑？`,
+            confirmText: "返回作业",
+            cancelText: "继续编辑",
+            success: (result) => { if (result.confirm && !this.pageDestroyed) this.returnToHomework(); },
+          });
+        } else this.returnToHomework();
+      }
     } finally {
       this.saveInProgress = false;
       if (!this.pageDestroyed) this.setData({ saving: false });
     }
+  },
+
+  returnToHomework() {
+    if (this.data.processing || this.returningToHomework || this.pageDestroyed) return;
+    const dates = this.data.drafts.filter((draft) => draft.saved).map((draft) => draft.homeworkDate).sort();
+    if (!dates.length) return;
+    this.returningToHomework = true;
+    getApp().globalData.homeworkEntry = { date: dates[dates.length - 1] };
+    this.disableUnloadGuard();
+    wx.switchTab({
+      url: "/pages/homework-list/homework-list",
+      fail: (error) => { this.returningToHomework = false; this.updateUnloadGuard(); showError(error, "作业已保存，返回列表失败，请手动返回"); },
+    });
   },
 
   updateUnloadGuard() {

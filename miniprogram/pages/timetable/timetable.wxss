@@ -1,0 +1,31 @@
+.timetable-page { padding-top: 20rpx; }
+.timetable-page.has-actions { padding-bottom: calc(154rpx + env(safe-area-inset-bottom)); }
+.timetable-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; border-top: 8rpx solid var(--primary); }
+.compact-title { margin: 0 0 8rpx; }
+.semester-label { display: inline-flex; align-items: center; min-height: 52rpx; padding: 0 18rpx; border-radius: 999rpx; background: var(--primary-light); color: #2F6EAD; font-size: 25rpx; font-weight: 600; }
+.heading-tip { max-width: 280rpx; color: var(--text-light); text-align: right; font-size: 23rpx; line-height: 1.5; }
+.day-scroll { margin-bottom: 22rpx; white-space: nowrap; }
+.day-row { display: inline-flex; gap: 12rpx; padding-bottom: 6rpx; }
+.day-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 104rpx; min-height: 104rpx; border: 2rpx solid var(--border); border-radius: 18rpx; box-sizing: border-box; background: #fff; color: var(--text-light); font-size: 22rpx; }
+.day-tab.active { border-color: var(--primary); background: var(--primary); color: #fff; box-shadow: 0 8rpx 18rpx rgba(74,144,217,.2); }
+.day-short { font-size: 31rpx; font-weight: 700; line-height: 1.2; }
+.slot-card { display: flex; align-items: center; min-height: 112rpx; margin-bottom: 14rpx; padding: 14rpx 22rpx; border: 2rpx solid transparent; border-radius: 18rpx; box-sizing: border-box; background: #fff; box-shadow: 0 4rpx 16rpx rgba(44,62,80,.05); }
+.slot-card.filled { border-left: 8rpx solid var(--primary); }
+.empty-slot { border-style: dashed; border-color: #DCE2E8; background: rgba(255,255,255,.72); box-shadow: none; }
+.period-badge { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 0 0 72rpx; height: 72rpx; margin-right: 22rpx; border-radius: 16rpx; background: #F0F3F6; color: var(--text-light); font-size: 20rpx; }
+.period-number { color: var(--text); font-size: 32rpx; font-weight: 700; line-height: 1.1; }
+.course-content { flex: 1; min-width: 0; }
+.course-name { font-size: 31rpx; font-weight: 600; word-break: break-all; }
+.course-meta, .course-time { margin-top: 4rpx; color: var(--text-light); font-size: 23rpx; }
+.course-time { color: #2F6EAD; }
+.empty-course { flex: 1; color: var(--text-light); font-size: 26rpx; }
+.slot-action { flex-shrink: 0; margin-left: 16rpx; color: var(--gray); font-size: 42rpx; }
+.load-more { padding: 50rpx 24rpx; text-align: center; color: var(--text-light); }
+.timetable-actions { position: fixed; right: 0; bottom: 0; left: 0; z-index: 10; padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom)); border-top: 2rpx solid var(--border); background: rgba(255,255,255,.98); }
+.ai-import-button { width: 100%; }
+.ai-import-button.unavailable { color: var(--text-light); background: #EEF1F5; }
+@media (max-width: 340px) {
+  .timetable-heading { align-items: flex-start; }
+  .heading-tip { max-width: 220rpx; }
+  .slot-card { padding-right: 18rpx; padding-left: 18rpx; }
+}

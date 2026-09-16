@@ -1,0 +1,9 @@
+<view wx:if="{{visible}}" class="calendar-overlay" catchtap="close" catchtouchmove="stopPropagation">
+  <view class="calendar-sheet" catchtap="stopPropagation" role="dialog" aria-label="选择作业日期">
+    <view class="calendar-header"><text>选择作业日期</text><button class="calendar-close" bindtap="close" aria-label="关闭日历">×</button></view>
+    <view class="calendar-month"><button class="calendar-arrow" data-offset="-1" bindtap="changeMonth" disabled="{{!previousEnabled}}" aria-label="上个月">‹</button><text>{{label}}</text><button class="calendar-arrow" data-offset="1" bindtap="changeMonth" disabled="{{!nextEnabled}}" aria-label="下个月">›</button></view>
+    <view class="calendar-week"><text wx:for="{{weekdays}}" wx:key="*this">{{item}}</text></view>
+    <view class="calendar-days"><button wx:for="{{days}}" wx:key="value" class="calendar-day {{item.inMonth ? '' : 'outside'}} {{item.today ? 'today' : ''}} {{item.selected ? 'selected' : ''}}" data-value="{{item.value}}" disabled="{{item.disabled}}" bindtap="selectDate" aria-label="{{item.value}} {{item.today ? '今天' : ''}} {{item.selected ? '已选中' : ''}}"><text>{{item.label}}</text><text class="calendar-marker">{{item.today ? '今天' : ''}}</text></button></view>
+    <button class="calendar-today" bindtap="selectToday">回到今天</button>
+  </view>
+</view>

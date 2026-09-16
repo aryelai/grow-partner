@@ -29,3 +29,15 @@ test("无有效截止时间时重要作业优先", () => {
 
   assert.deepEqual(result.map((item) => item._id), ["important", "normal"]);
 });
+
+test("同一日期的作业优先按照家庭科目顺序分组", () => {
+  const result = sortHomework([
+    { _id: "english-new", subject: "英语", isCompleted: false, createdAt: "2026-09-16T12:00:00.000Z" },
+    { _id: "math", subject: "数学", isCompleted: false, createdAt: "2026-09-16T09:00:00.000Z" },
+    { _id: "chinese", subject: "语文", isCompleted: false, createdAt: "2026-09-16T08:00:00.000Z" },
+    { _id: "english-old", subject: "英语", isCompleted: false, createdAt: "2026-09-16T07:00:00.000Z" },
+    { _id: "custom", subject: "班会", isCompleted: false, createdAt: "2026-09-16T13:00:00.000Z" },
+  ], new Date("2026-09-16T00:00:00.000Z"), ["语文", "数学", "英语"]);
+
+  assert.deepEqual(result.map((item) => item._id), ["chinese", "math", "english-new", "english-old", "custom"]);
+});

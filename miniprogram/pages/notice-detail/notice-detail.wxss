@@ -7,3 +7,7 @@
 .image-grid image { width: calc((100% - 24rpx) / 3); height: 200rpx; margin: 0 12rpx 12rpx 0; border-radius: 12rpx; }
 .image-grid image:nth-child(3n) { margin-right: 0; }
 .action { margin-top: 24rpx; }
+.key-time { margin-top: 20rpx; padding: 16rpx 20rpx; border-radius: 12rpx; color: #8A5A1C; background: #FFF5E7; font-size: 30rpx; font-weight: 600; }
+.notice-state { margin-top: 16rpx; color: var(--text-light); }
+.meta-grid text { box-sizing: border-box; padding-right: 12rpx; line-height: 1.6; word-break: break-all; }
+@media (max-width: 360px) { .meta-grid text { width: 100%; } }

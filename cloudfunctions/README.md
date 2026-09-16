@@ -4,7 +4,7 @@
 
 1. 在微信开发者工具中导入项目根目录，核对 `project.config.json` 的 `appid` 与当前要联调的小程序主体一致；AppID 不是密钥，但不得写入 AppSecret。
 2. 创建云开发环境。`cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })` 会让云函数使用其所在环境，不需要在代码中硬编码环境 ID。
-3. 创建下列集合并将客户端直接读写设为拒绝，业务访问统一经过云函数：`users`、`families`、`family_join_requests`、`family_search_limits`、`homework`、`notices`、`habits`、`habit_checkins`、`habit_points`、`habit_rewards`、`plans`、`settings`、`subjects`、`message_subscriptions`、`reminder_deliveries`、`ai_import_jobs`。订阅提醒集合与 `ai_import_jobs` 必须明确设置为客户端不可读、不可写。
+3. 创建下列集合并将客户端直接读写设为拒绝，业务访问统一经过云函数：`users`、`families`、`family_join_requests`、`family_search_limits`、`homework`、`notices`、`habits`、`habit_checkins`、`habit_points`、`habit_rewards`、`plans`、`settings`、`subjects`、`timetables`、`message_subscriptions`、`reminder_deliveries`、`ai_import_jobs`。`timetables`、订阅提醒集合与 `ai_import_jobs` 必须明确设置为客户端不可读、不可写。
 4. 逐个右键 `cloudfunctions` 下的函数目录，选择“上传并部署：云端安装依赖（不上传 node_modules）”。除 `ai` 外的函数继续使用官方 `wx-server-sdk@3.0.1`；`ai` 使用 `wx-server-sdk@4.0.2` 和官方 `@cloudbase/node-sdk@3.17.2`，以支持托管多模态模型和服务端上传元数据。
 5. 创建 `families.inviteCode` 唯一索引和“推荐索引”列出的复合索引；账号由云函数上下文中的 OpenID 识别，不采集手机号。
 6. 家庭内测版必须同时为 `login`、`family` 配置 `REGISTRATION_MODE=family_invite`。允许值只有 `open`、`family_invite`、`closed`；缺失或非法配置按 `closed` 处理。邀请码只由现有家庭创建者分享，不得把邀请码、家庭 ID 或 OpenID 写入代码或环境变量。
@@ -26,10 +26,11 @@
 | `login` | `getProfile`、`register`、`updateProfile` |
 | `family` | `create`、`searchByInviteCode`、`applyJoin`、`listRequests`、`reviewJoin`、`get`、`members`、`removeMember` |
 | `homework` | `list`、`get`、`create`、`update`、`remove`、`toggleCompleted` |
-| `notice` | `list`、`get`、`create`、`update`、`remove` |
+| `notice` | `list`、`get`、`create`、`update`、`remove`、`toggleCompleted` |
 | `habit` | `list`、`get`、`create`、`update`、`checkIn`、`remove` |
 | `plan` | `list`、`get`、`create`、`update`、`toggleItem`、`remove` |
-| `settings` | `get`、`updatePreferences`、`changeSemester`、`updateFamily`、`getSubjects`、`addSubject`、`removeSubject` |
+| `settings` | `get`、`updatePreferences`、`changeSemester`、`updateFamily`、`getSubjects`、`addSubject`、`moveSubject`、`removeSubject` |
+| `timetable` | `get`、`saveEntry`、`removeEntry`、`mergeEntries` |
 | `ai` | `getStatus`、`createImportJob`、`analyzeImportJob`、`cancelImportJob` |
 | `reminder` | 客户端可调用 `getStatus`、`recordSubscription`；`run` 仅接受 `SOURCE === "wx_trigger"` 的定时触发，不能由客户端 action 调用 |
 
@@ -37,7 +38,7 @@
 
 ## 核心集合
 
-`users`、`families`、`homework`、`notices`、`habits`、`habit_checkins`、`habit_points`、`habit_rewards`、`plans`、`settings`、`subjects` 的核心字段遵循 `docs/START.md`。为执行完整业务规则，增加以下必要字段：
+`users`、`families`、`homework`、`notices`、`habits`、`habit_checkins`、`habit_points`、`habit_rewards`、`plans`、`settings`、`subjects`、`timetables` 的核心字段遵循 `docs/START.md`。为执行完整业务规则，增加以下必要字段：
 
 - `families.inviteCode`：服务端生成的 8 位无歧义邀请码，仅向家庭创建者返回。
 - `family_join_requests`：`familyId`、`applicantOpenid`、`relation`、`status`、`createdAt`、`reviewedAt`、`reviewedBy`。该集合承载加入申请和审批。
@@ -45,13 +46,17 @@
 - `habits.semester`：保证切换学期后习惯按学期隔离。
 - `plans.semester`：保证日/周/月计划按学期隔离。
 - `plans.date`：三个计划类型都保存一个 ISO 日期锚点，列表据此计算日/周/月范围。
+- `notices.eventTime`、`notices.deadline`：可选的事项时间和截止时间，使用 ISO 本地日期时间字符串；两者都不替代提醒时间 `remindTime`。
+- `notices.isCompleted`、`notices.completedAt`、`notices.completedByName`：记录通知事项是否完成、完成时间和执行人显示名；旧通知缺少这些字段时按待处理展示，完成状态不取消、改写或重新触发提醒。
+- `notices.aiImportRequestId`：仅由 AI 导入保存流程写入的内部幂等编号；服务端结合家庭、当前 OpenID 和该编号生成确定性文档 ID，并在事务内防止批量保存重试产生重复通知，客户端查询响应不会返回该字段。
 - `habits.endDate`：可空，用于持续或限定周期的习惯。
 - `habit_checkins.pointsAwarded`：记录该日期是否已发放积分，防止反复修改打卡状态导致重复计分；旧记录若 `status` 已为 `completed`，按已发放处理。
 - `message_subscriptions`：按当前 OpenID 和待办模板保存预计可用次数、最近订阅结果及受控请求编号；文档 ID 由服务端生成，客户端禁止直接读写。
 - `reminder_deliveries`：按通知、提醒版本、接收人和模板生成确定性发送记录，保存调度、占用、发送、失败或取消状态；客户端禁止直接读写。
-- `ai_import_jobs`：保存 AI 导入任务与北京时间每日限流文档。任务绑定服务端解析的 OpenID、`familyId` 和白名单 `importScope`，只记录临时文件、状态、过期时间及清理结果，不保存识别正文；客户端禁止直接读写。旧任务缺失 `importScope` 时按 `auto` 兼容，分析接口不得接受客户端改写范围。
+- `timetables`：每个家庭与当前学期一个确定性文档，保存 `familyId`、`semester`、`version` 和最多 84 个课程格；每格包含 `dayOfWeek`、`period`、`courseName`、教师、地点和可选时间。写入使用 `version` 乐观锁，防止家庭成员并发静默覆盖。
+- `ai_import_jobs`：保存 AI 导入任务与北京时间每日限流文档。任务绑定服务端解析的 OpenID、`familyId`、白名单 `importType` 和作业专用 `importScope`，只记录临时文件、状态、过期时间及清理结果，不保存识别正文；客户端禁止直接读写。旧任务缺失 `importType` 时按 `homework`、缺失 `importScope` 时按 `auto` 兼容，分析接口不得接受客户端改写任务类型或范围。
 
-AI 作业导入支持 `tokenhub` 和 `cloudbase` 两个服务端供应商，生产推荐使用 TokenHub 的 `glm-5.3-flash`，`cloudbase` 仅保留为回滚通道。供应商、模型名和每日任务上限只从 `ai` 云函数环境变量 `AI_PROVIDER`、`AI_MODEL`、`AI_DAILY_LIMIT` 读取；TokenHub 还必须配置 `TOKENHUB_API_KEY`。任一必要配置缺失或非法时功能按关闭处理，响应不得返回供应商、模型名、额度、密钥或其他服务端配置。`settings` 中既有供应商、Base URL 和模型名仍只作为旧版占位，不参与本功能。
+AI 图片导入支持作业、通知和课程表三类任务，并共用同一用户的北京时间每日任务额度。底层支持 `tokenhub` 和 `cloudbase` 两个服务端供应商，生产推荐使用 TokenHub 的 `glm-5.3-flash`，`cloudbase` 仅保留为回滚通道。供应商、模型名和每日任务上限只从 `ai` 云函数环境变量 `AI_PROVIDER`、`AI_MODEL`、`AI_DAILY_LIMIT` 读取；TokenHub 还必须配置 `TOKENHUB_API_KEY`。任一必要配置缺失或非法时功能按关闭处理，响应不得返回供应商、模型名、额度、密钥或其他服务端配置。`settings` 中既有供应商、Base URL 和模型名仍只作为旧版占位，不参与本功能。
 
 ### AI 作业导入部署前配置（尚未执行）
 
@@ -65,7 +70,7 @@ AI 作业导入支持 `tokenhub` 和 `cloudbase` 两个服务端供应商，生�
 6. 保持云存储安全规则中的 `"write": "false"`。导入页不调用 `wx.cloud.uploadFile`，而是从 `ai.createImportJob` 获得服务端随机精确路径和短时上传元数据；客户端 PUT 必须同时按 `@cloudbase/node-sdk@3.17.2` 发送 `Signature`、`authorization`、`key`、`x-cos-security-token`、`x-cos-meta-fileid`，其中 `key` 只能使用服务端返回的 `uploadKey`；识别结束后由服务端删除文件。
 7. 将控制台核对过的当前 CloudBase 存储桶 HTTPS 上传地址加入小程序 `request` 合法域名，不使用通配符，也不关闭域名校验。TokenHub 请求由云函数发起，不属于小程序客户端合法域名配置。
 8. 为 `ai-imports/` 前缀配置短期对象生命周期，作为小程序崩溃、断网、宿主硬超时或迟到上传导致即时删除未完成时的兜底；生命周期不能替代识别和取消接口的即时删除。
-9. 在再次提交小程序审核前更新“用户隐私保护指引”：按控制台实际枚举声明导入页会选择相册图片或调用相机，截图会先临时存放于微信云开发，再发送给腾讯云 TokenHub 及所调用模型服务，仅用于本次作业识别，不保存为作业附件；同时说明临时文件删除策略、处理目的和用户可在保存前修改或取消。
+9. 在再次提交小程序审核前复核“用户隐私保护指引”：按控制台实际枚举声明导入页会选择相册图片或调用相机，截图会先临时存放于微信云开发，再发送给腾讯云 TokenHub 及所调用模型服务，仅用于识别用户主动选择的作业、学校通知或课程表截图并生成可编辑草稿，不保存为业务附件；同时说明临时文件删除策略、处理目的和用户可在保存前修改或取消。
 10. 使用 40–60 张脱敏真实作业截图，对 `glm-5.3-flash`、账户内免费高精度 OCR 和可选的 `deepseek/deepseek-v4-flash-vision-exp` 做同批盲测。以整条作业完全正确率、漏识别率、臆造率、星期列错误率、截止时间错误率、人工修改次数、P95 时延和实付费用为指标；没有数据前不启用 OCR 自动改写。DeepSeek 视觉模型为原厂直供实验版，TokenHub 不提供 SLA，仅用于对照评测，不作为当前默认生产模型。
 11. 部署后分别用创建者、普通成员和孩子账号验证允许、允许和拒绝，再验证过大文件、伪造任务 ID、重复分析、额度耗尽、上游 401/429/超时和临时文件清理。
 12. `ai` 使用 `homework.list` 的 `created_at_desc` 白名单模式单次读取当前学期最近 50 条，部署前必须创建 `homework: familyId ASC, semester ASC, createdAt DESC` 复合索引；该模式不改变普通作业列表的业务排序。
@@ -84,7 +89,13 @@ family_join_requests:   applicantOpenid ASC, status ASC
 family_search_limits:   openid ASC, date ASC
 homework:               familyId ASC, semester ASC, subject ASC, isCompleted ASC, createdAt DESC
 homework:               familyId ASC, semester ASC, createdAt DESC
+homework:               familyId ASC, homeworkDate ASC, createdAt DESC
+homework:               familyId ASC, homeworkDate ASC, isCompleted ASC, createdAt DESC
+homework:               familyId ASC, homeworkDate ASC, subject ASC, createdAt DESC
+homework:               familyId ASC, homeworkDate ASC, subject ASC, isCompleted ASC, createdAt DESC
 notices:                familyId ASC, semester ASC, category ASC, createdAt DESC
+notices:                familyId ASC, semester ASC, isCompleted ASC, createdAt DESC
+notices:                familyId ASC, semester ASC, category ASC, isCompleted ASC, createdAt DESC
 notices:                reminderState ASC, scheduledAt ASC
 habits:                 familyId ASC, semester ASC, category ASC, isActive ASC, createdAt DESC
 habit_checkins:         habitId ASC, date ASC
@@ -97,6 +108,19 @@ reminder_deliveries:    status ASC, nextAttemptAt ASC
 reminder_deliveries:    noticeId ASC, reminderVersion ASC
 reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC
 ```
+
+### 作业日期筛选索引部署记录（2026-09-16）
+
+`homework` 列表改为按作业日期精确筛选后，已在唯一目标环境 `cloud1-d3g2hleood2cae7e7` 创建并核对以下四个非唯一复合索引：
+
+```text
+familyId_1_homeworkDate_1_createdAt_-1
+familyId_1_homeworkDate_1_isCompleted_1_createdAt_-1
+familyId_1_homeworkDate_1_subject_1_createdAt_-1
+familyId_1_homeworkDate_1_subject_1_isCompleted_1_createdAt_-1
+```
+
+四个索引均按 `familyId`、`homeworkDate`、可选的 `subject`、可选的 `isCompleted` 升序，最后按 `createdAt` 降序。不得删除原有学期索引；AI 重复检查仍通过 `familyId + semester + createdAt` 查询最近作业。
 
 云数据库未自动保证业务唯一性时，需要通过控制台能力或后续服务端幂等键强化 `users.openid`、`families.inviteCode`、`habit_checkins(habitId,date)` 和单家庭 `settings` 的唯一约束。当前代码已做邀请码碰撞检查与重复打卡不重复计分，但高并发下仍应以数据库唯一约束作为最终防线。
 
@@ -118,9 +142,9 @@ reminder_deliveries:    recipientOpenid ASC, status ASC, deadlineAt ASC
 - `message_subscriptions` 和 `reminder_deliveries` 必须设置为客户端不可读、不可写；订阅登记只能更新当前微信身份，不能接受客户端提供的 OpenID、`familyId` 或预计次数。
 - 待办模板 ID 可以作为受控常量保存；不得保存 AppSecret，也不得请求或发送本轮禁用的日程提醒模板。
 - `reminder.run` 只接受精确的微信定时触发来源 `SOURCE === "wx_trigger"`，不提供客户端测试发送入口。
-- 家庭内测版仍全局禁止 `wx.cloud.uploadFile`，头像、普通作业编辑、通知和习惯页面均不提供新增附件入口；仅 AI 作业导入页可调用 `wx.chooseMedia` 选择临时截图，且截图不会写入作业附件。历史 `cloud://` fileID 不删除。
+- 家庭内测版仍全局禁止 `wx.cloud.uploadFile`，头像、普通作业编辑、通知和习惯页面均不提供新增附件入口；仅已注册的作业、通知和课程表 AI 导入页可各调用一次 `wx.chooseMedia` 选择临时截图，且截图不会写入业务附件。历史 `cloud://` fileID 不删除。
 - 家庭内测版云存储规则必须保留原上传者读取并设置客户端 `write: false`；公开恢复上传前必须改为服务端授权上传并完成内容安全检测。
-- AI 作业导入只允许创建者和普通成员。云函数签发上传元数据和执行识别前都要校验身份、家庭、角色、任务所有权、文件数量、格式、大小、过期时间和每日额度；孩子账号不能使用。
+- AI 图片导入只允许创建者和普通成员。云函数签发上传元数据和执行识别前都要校验身份、家庭、角色、任务类型、任务所有权、文件数量、格式、大小、过期时间和每日额度；孩子账号不能使用。
 - 生产环境应配置订阅消息模板和数据备份策略。
 
 ## 部署门禁

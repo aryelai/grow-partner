@@ -7,6 +7,7 @@ const {
   getDateRangeForPlan,
   getBeijingDate,
   formatHomeworkDate,
+  shiftIsoDate,
 } = require("../miniprogram/utils/date");
 
 test("一月归属上一自然年的下学期", () => {
@@ -20,6 +21,14 @@ test("作业默认日期使用北京时间且展示星期不受设备时区影�
   for (const value of [undefined, "", "2026-02-29", "2026-09-31", "2026-9-15"]) {
     assert.equal(formatHomeworkDate(value), "日期待补充");
   }
+});
+
+test("作业日期前后切换可跨月跨年且拒绝非法参数", () => {
+  assert.equal(shiftIsoDate("2026-09-01", -1), "2026-08-31");
+  assert.equal(shiftIsoDate("2026-12-31", 1), "2027-01-01");
+  assert.equal(shiftIsoDate("2024-02-28", 1), "2024-02-29");
+  assert.throws(() => shiftIsoDate("2026-02-29", 1), /Invalid date value/);
+  assert.throws(() => shiftIsoDate("2026-09-16", 0.5), /Invalid date offset/);
 });
 
 test("二月至七月归属当年上学期", () => {

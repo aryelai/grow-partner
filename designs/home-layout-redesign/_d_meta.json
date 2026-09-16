@@ -1,0 +1,35 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "成长搭档首页布局": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-09-15T12:56:20.144Z",
+          "status": "needs-review",
+          "subtitle": "通知双级筛选和时间标签，成长页统一习惯与计划入口",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "section": "微信小程序信息架构"
+        },
+        {
+          "path": "layout-v3.html",
+          "createdAt": "2026-09-15T14:54:59.462Z",
+          "status": "approved",
+          "subtitle": "上午下午各4节紧凑课表，作业完成撤销与列表顶部固定操作",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "section": "微信小程序信息架构"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-09-15T12:56:20.156Z",
+  "updatedAt": "2026-09-15T15:25:16.422Z"
+}

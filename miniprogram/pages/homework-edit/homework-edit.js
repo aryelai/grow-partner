@@ -44,7 +44,7 @@ Page({
     } catch (error) {
       console.error("Load custom subjects failed", { message: error.message });
     }
-    const homeworkDate = options.id ? "" : getBeijingDate();
+    const homeworkDate = options.id ? "" : (validateIsoDate(options.homeworkDate) ? options.homeworkDate : getBeijingDate());
     this.setData({
       id: options.id || "",
       subjects,

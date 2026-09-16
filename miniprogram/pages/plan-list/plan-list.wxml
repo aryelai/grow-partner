@@ -1,12 +1,4 @@
 <view class="page plan-page">
   <guest-banner wx:if="{{guestMode}}" />
-  <view class="view-tabs"><view wx:for="{{types}}" wx:key="value" class="view-tab {{type === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectType">{{item.label}}计划</view></view>
-  <view class="date-nav"><button data-offset="-1" bindtap="shiftDate">‹</button><view><view class="date-label">{{rangeLabel}}</view><view class="completion">完成率 {{completionRate}}%</view></view><button data-offset="1" bindtap="shiftDate">›</button></view>
-  <view class="card plan-card" wx:for="{{items}}" wx:for-item="plan" wx:key="_id">
-    <view class="plan-header" data-id="{{plan._id}}" bindtap="edit"><text>{{plan.title}}</text><text class="muted">{{plan.date}}</text></view>
-    <view class="plan-item" wx:for="{{plan.items}}" wx:for-item="planItem" wx:for-index="itemIndex" wx:key="index"><text class="priority {{planItem.priority}}"></text><text class="item-text {{planItem.isDone ? 'done' : ''}}">{{planItem.text}}</text><switch color="#27AE60" checked="{{planItem.isDone}}" data-id="{{plan._id}}" data-index="{{itemIndex}}" bindchange="toggleItem" /></view>
-    <view class="notes" wx:if="{{plan.notes}}">备注：{{plan.notes}}</view>
-  </view>
-  <view class="empty" wx:if="{{!loading && !items.length}}">这个时间范围还没有计划</view>
-  <button wx:if="{{canManage}}" class="fab" bindtap="create">＋</button>
+  <include src="../../components/plan-panel/plan-panel.wxml" />
 </view>

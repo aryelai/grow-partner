@@ -7,13 +7,16 @@
           <text class="subject-name">{{item.name}}</text>
           <text class="subject-kind">{{item.isDefault ? '系统推荐' : '家庭自定义'}}</text>
         </view>
-        <view class="subject-actions">
-          <button class="ghost-button subject-action" disabled="{{renaming}}" data-subject="{{item.name}}" bindtap="beginRename">修改</button>
-          <button wx:if="{{!item.isDefault}}" class="danger-button subject-action" disabled="{{renaming}}" data-subject="{{item.name}}" bindtap="remove">删除</button>
+        <view class="subject-actions" wx:if="{{canManage}}">
+          <button class="subject-order" disabled="{{changing || renaming || index === 0}}" data-subject="{{item.name}}" data-offset="-1" bindtap="moveSubject" aria-label="上移{{item.name}}">↑</button>
+          <button class="subject-order" disabled="{{changing || renaming || index === subjectItems.length - 1}}" data-subject="{{item.name}}" data-offset="1" bindtap="moveSubject" aria-label="下移{{item.name}}">↓</button>
+          <button class="ghost-button subject-action" disabled="{{renaming || changing}}" data-subject="{{item.name}}" bindtap="beginRename">修改</button>
         </view>
       </view>
     </view>
     <view class="muted tip">所有科目都可修改名称；系统推荐科目不能直接删除。</view>
+    <view class="muted tip">上移、下移可调整科目标签的顺序，自动保存到当前家庭。删除入口在修改区内。</view>
+    <view class="muted tip" wx:if="{{!canManage}}">当前账号仅可查看科目，无管理权限。</view>
   </view>
 
   <view class="card edit-card" wx:if="{{editingSubject}}">
@@ -24,20 +27,21 @@
     </view>
     <view class="field">
       <text class="field-label">新名称 *</text>
-      <input class="input" maxlength="10" focus="{{true}}" disabled="{{renaming}}" value="{{editingInput}}" bindinput="onRenameInput" bindconfirm="rename" placeholder="请输入科目名称" />
+      <input class="input" maxlength="10" focus="{{true}}" disabled="{{renaming || changing}}" value="{{editingInput}}" bindinput="onRenameInput" bindconfirm="rename" placeholder="请输入科目名称" />
     </view>
     <view class="edit-tip">修改只影响当前家庭后续选择和新建作业，不会批量改动历史作业。</view>
     <view class="edit-actions">
-      <button class="ghost-button" disabled="{{renaming}}" bindtap="cancelRename">取消</button>
-      <button class="primary-button" loading="{{renaming}}" disabled="{{renaming}}" bindtap="rename">保存修改</button>
+      <button class="ghost-button" disabled="{{renaming || changing}}" bindtap="cancelRename">取消</button>
+      <button class="primary-button" loading="{{renaming}}" disabled="{{renaming || changing}}" bindtap="rename">保存修改</button>
     </view>
+    <button wx:if="{{editingCanRemove}}" class="danger-button subject-delete" disabled="{{renaming || changing}}" data-subject="{{editingSubject}}" bindtap="remove">删除此科目</button>
   </view>
 
-  <view class="card add-card">
+  <view class="card add-card" wx:if="{{canManage}}">
     <view class="section-title">添加自定义科目</view>
     <view class="add-row">
-      <input class="input" maxlength="10" value="{{input}}" bindinput="onInput" bindconfirm="add" placeholder="最多 10 个字" />
-      <button class="primary-button add-button" bindtap="add">添加</button>
+      <input class="input" maxlength="10" value="{{input}}" bindinput="onInput" bindconfirm="add" disabled="{{changing || renaming}}" placeholder="最多 10 个字" />
+      <button class="primary-button add-button" loading="{{changing}}" disabled="{{changing || renaming || loading}}" bindtap="add">添加</button>
     </view>
   </view>
 </view>

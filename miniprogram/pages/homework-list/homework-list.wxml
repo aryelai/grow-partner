@@ -1,11 +1,18 @@
-<view class="page homework-page {{canManage || canUseImport ? 'has-actions' : ''}}">
+<view class="page tab-page homework-page {{undoId ? 'has-feedback' : ''}}">
   <guest-banner wx:if="{{guestMode}}" />
+  <view class="list-toolbar"><text class="list-toolbar-title">作业</text><view class="list-toolbar-actions"><button wx:if="{{canUseImport || guestMode}}" class="toolbar-button {{canImport || guestMode ? '' : 'unavailable'}}" bindtap="importHomework">AI 导入</button><button wx:if="{{canManage || guestMode}}" class="toolbar-button primary" bindtap="createHomework">＋ 新增</button><button class="toolbar-button more" bindtap="showMore" aria-label="更多作业操作"><view class="more-dots"><view class="more-dot" /><view class="more-dot" /><view class="more-dot" /></view></button></view></view>
   <view class="filter-panel">
-    <view class="semester-switcher">
-      <button class="semester-arrow" data-offset="-1" bindtap="changeSemester" disabled="{{guestMode}}">‹</button>
-      <view class="semester-value">{{semester}}</view>
-      <button class="semester-arrow" data-offset="1" bindtap="changeSemester" disabled="{{guestMode}}">›</button>
+    <view class="date-switcher">
+      <button class="date-arrow" data-offset="-1" bindtap="changeDate" aria-label="查看前一天作业">‹</button>
+      <button class="date-picker" bindtap="openCalendar" aria-label="选择作业日期">
+        <view class="date-current">
+          <text class="date-value">{{selectedDateText}}</text>
+          <text class="date-hint">点击选择日期</text>
+        </view>
+      </button>
+      <button class="date-arrow" data-offset="1" bindtap="changeDate" aria-label="查看后一天作业">›</button>
     </view>
+    <view class="filter-label">按科目筛选</view>
     <scroll-view class="subject-scroll" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
       <view class="subject-row">
         <view wx:for="{{subjects}}" wx:key="*this" class="tag {{selectedSubject === item ? 'active' : ''}}" data-value="{{item}}" bindtap="selectSubject">{{item}}</view>
@@ -19,7 +26,10 @@
 
   <view class="homework-list">
     <view class="card homework-card {{homework.isCompleted ? 'completed' : ''}}" wx:for="{{items}}" wx:for-item="homework" wx:key="_id" data-id="{{homework._id}}" bindtap="openDetail">
-      <view class="homework-labels"><text class="homework-subject-label">{{homework.subject}}</text><text class="homework-date-label {{homework.homeworkDateMissing ? 'missing' : ''}}">作业日期 · {{homework.homeworkDateText}}</text></view>
+      <view class="homework-labels">
+        <view class="homework-subject-label"><text class="homework-label-value">{{homework.subject}}</text></view>
+        <view class="homework-date-label {{homework.homeworkDateMissing ? 'missing' : ''}}"><text class="homework-label-value">{{homework.homeworkDateText}}</text></view>
+      </view>
       <view class="title-row">
         <text wx:if="{{homework.isImportant}}" class="important">★</text>
         <text wx:if="{{homework.hasDeadline}}" class="deadline-icon">◷</text>
@@ -37,15 +47,14 @@
       </view>
       <view class="card-footer">
         <text class="state {{homework.isCompleted ? 'done' : ''}}">{{homework.isCompleted ? '✓ 已完成' : '● 未完成'}}</text>
-        <button class="toggle-button" size="mini" data-id="{{homework._id}}" data-completed="{{homework.isCompleted}}" catchtap="toggleCompleted">{{homework.isCompleted ? '取消完成' : '标记完成'}}</button>
+        <button class="completion-button" disabled="{{completionBusy || loading}}" data-id="{{homework._id}}" catchtap="toggleCompleted">{{homework.isCompleted ? '撤销完成' : '标为完成'}}</button>
       </view>
     </view>
-    <view class="empty" wx:if="{{!loading && !items.length}}">当前筛选条件下没有作业</view>
+    <view class="empty" wx:if="{{loadFailed}}">作业加载失败<button class="ghost-button" bindtap="retryLoad">重新加载</button></view>
+    <view class="empty" wx:if="{{!loading && !loadFailed && !items.length}}">{{selectedDateText}}暂无符合条件的作业</view>
     <view class="load-more" wx:if="{{loading}}">加载中…</view>
     <view class="load-more" wx:if="{{!loading && items.length && !hasMore}}">已加载全部</view>
   </view>
-  <view class="homework-actions" wx:if="{{canManage || canUseImport}}">
-    <button wx:if="{{canUseImport}}" class="ghost-button ai-import-button {{canImport ? '' : 'unavailable'}}" bindtap="importHomework">AI 导入</button>
-    <button wx:if="{{canManage}}" class="primary-button create-homework-button" bindtap="createHomework">＋ 新增作业</button>
-  </view>
+  <view class="completion-feedback" wx:if="{{undoId}}"><text class="completion-feedback-text">{{completionText}}</text><button bindtap="undoCompleted" disabled="{{completionBusy || loading}}">撤销</button><button bindtap="dismissCompletion">关闭</button></view>
+  <date-calendar visible="{{calendarVisible}}" value="{{selectedDate}}" bindchange="onDateChange" bindclose="closeCalendar" />
 </view>

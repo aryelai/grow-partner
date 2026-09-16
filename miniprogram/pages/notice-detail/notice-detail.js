@@ -3,6 +3,7 @@ const { requireFamily } = require("../../utils/session");
 const { NOTICE_CATEGORIES, RELATIONS } = require("../../utils/constants");
 const { formatDateTime } = require("../../utils/date");
 const { canPerform } = require("../../utils/permissions");
+const { decorateNotice } = require("../../utils/notice");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 const NOTICE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
@@ -34,7 +35,7 @@ Page({
   onShareAppMessage: createShareAppMessage,
   onShareTimeline: createShareTimelineMessage,
 
-  data: { id: "", item: null, canEdit: false },
+  data: { id: "", item: null, canEdit: false, completionBusy: false },
   async onLoad(options) {
     const id = options && options.id;
     if (typeof id !== "string" || !NOTICE_ID_PATTERN.test(id)) {
@@ -58,7 +59,7 @@ Page({
       const remindTime = getValidReminderTime(item.remindTime);
       this.setData({
         item: {
-          ...item,
+          ...decorateNotice(item),
           images: Array.isArray(item.images) ? item.images.filter((value) => typeof value === "string") : [],
           categoryName: category.label,
           hasReminder: Boolean(remindTime),
@@ -73,6 +74,16 @@ Page({
   previewImage(event) {
     const url = event.currentTarget.dataset.url;
     if (this.data.item && this.data.item.images.includes(url)) wx.previewImage({ current: url, urls: this.data.item.images });
+  },
+  onShow() { if (this.currentUser && this.data.id) return this.load(); },
+  async toggleCompleted() {
+    if (this.data.completionBusy || !this.data.item || !canPerform(this.currentUser && this.currentUser.role, "manageNotice")) return;
+    this.setData({ completionBusy: true });
+    try {
+      await callFunction("notice", "toggleCompleted", { id: this.data.id, isCompleted: !this.data.item.isCompleted });
+      await this.load();
+    } catch (error) { showError(error, "通知状态更新失败"); }
+    finally { this.setData({ completionBusy: false }); }
   },
   async edit() {
     let session;

@@ -1,0 +1,15 @@
+<view class="page timetable-edit-page">
+  <view class="course-position"><view class="position-day">{{dayLabel}}</view><view class="position-period">第 {{period}} 节</view></view>
+  <view class="card">
+    <view class="field"><text class="field-label">科目名称 *</text><input class="input" maxlength="20" value="{{form.courseName}}" data-field="courseName" bindinput="onInput" placeholder="请输入科目名称" disabled="{{submitting || initializing || initializationFailed}}" /></view>
+    <view class="field" wx:if="{{subjects.length}}"><text class="field-label">从科目管理中选择</text><scroll-view scroll-x="{{true}}" class="subject-scroll"><view class="subject-row"><text wx:for="{{subjects}}" wx:key="*this" class="tag {{form.courseName === item ? 'active' : ''}}" data-value="{{item}}" bindtap="selectSubject">{{item}}</text></view></scroll-view></view>
+    <view class="field"><text class="field-label">教师</text><input class="input" maxlength="20" value="{{form.teacher}}" data-field="teacher" bindinput="onInput" placeholder="可选" disabled="{{submitting || initializing || initializationFailed}}" /></view>
+    <view class="field"><text class="field-label">地点</text><input class="input" maxlength="30" value="{{form.location}}" data-field="location" bindinput="onInput" placeholder="例如：本班教室、实验室" disabled="{{submitting || initializing || initializationFailed}}" /></view>
+  </view>
+  <view class="card">
+    <view class="switch-row"><view><view class="time-title">记录上课时间</view><view class="muted time-help">不同学校作息不同，可按需填写</view></view><switch color="#4A90D9" checked="{{hasTime}}" bindchange="toggleTime" disabled="{{submitting || initializing || initializationFailed}}" /></view>
+    <view class="time-row" wx:if="{{hasTime}}"><picker mode="time" value="{{form.startTime}}" data-field="startTime" bindchange="onTime" disabled="{{submitting || initializing || initializationFailed}}"><view class="picker"><text>{{form.startTime}}</text><text class="picker-label">开始</text></view></picker><picker mode="time" value="{{form.endTime}}" data-field="endTime" bindchange="onTime" disabled="{{submitting || initializing || initializationFailed}}"><view class="picker"><text>{{form.endTime}}</text><text class="picker-label">结束</text></view></picker></view>
+  </view>
+  <button class="primary-button save-button" loading="{{submitting}}" disabled="{{submitting || initializing || initializationFailed}}" bindtap="save">保存课程</button>
+  <button wx:if="{{exists && !initializing && !initializationFailed}}" class="danger-button remove-button" disabled="{{submitting}}" bindtap="remove">删除本节课程</button>
+</view>

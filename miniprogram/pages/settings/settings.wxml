@@ -1,43 +1,84 @@
-<view class="page settings-page guest-settings" wx:if="{{guestMode}}">
-  <guest-banner />
-  <view class="card guest-feature-card">
-    <view class="section-title">成长搭档可以做什么</view>
-    <view class="guest-feature"><text class="guest-feature-icon">作</text><view><view class="guest-feature-title">集中登记作业</view><view class="guest-feature-detail">按科目和完成状态筛选，减少遗漏。</view></view></view>
-    <view class="guest-feature"><text class="guest-feature-icon">告</text><view><view class="guest-feature-title">整理学校通知</view><view class="guest-feature-detail">记录通知内容与提醒时间，方便家庭协作。</view></view></view>
-    <view class="guest-feature"><text class="guest-feature-icon">习</text><view><view class="guest-feature-title">跟踪习惯与计划</view><view class="guest-feature-detail">用打卡和计划持续记录孩子的成长过程。</view></view></view>
-  </view>
-  <view class="card guest-note-card">
-    <view class="section-title">游客体验说明</view>
-    <view class="guest-note">当前内容均为本地虚构示例，不读取微信昵称、头像、手机号或任何家庭数据，也不会把体验操作保存到云端。</view>
-  </view>
-  <view class="about">成长搭档 v1.0.2</view>
-</view>
+<view class="page tab-page settings-page">
+  <guest-banner wx:if="{{guestMode}}" />
+  <view class="list-page-head"><view class="page-title">我的</view><view class="page-description">管理家庭、学习资料和服务设置。</view></view>
 
-<view class="page settings-page" wx:elif="{{family}}">
-  <view class="card family-card">
-    <view class="card-heading"><view><view class="child-name">{{family.childName}}<text wx:if="{{family.childNickname}}" class="nickname">（{{family.childNickname}}）</text></view><view class="muted">{{stageName}} {{family.grade}}年级 · {{family.className || '未填写班级'}}</view><view class="muted birthday">生日：{{birthdayText}}</view></view><button wx:if="{{isCreator}}" size="mini" class="ghost-button" bindtap="editFamily">编辑</button></view>
-    <view class="invite-row" wx:if="{{isCreator && inviteCodeText}}"><view><text class="field-label">家庭邀请码</text><text class="invite-code">{{inviteCodeText}}</text></view><button size="mini" class="ghost-button" bindtap="copyInviteCode">复制</button></view>
-    <view class="semester-row"><button data-offset="-1" bindtap="changeSemester" disabled="{{!isCreator}}">‹</button><view><text class="field-label">当前学期</text><text class="semester">{{family.currentSemester}}</text></view><button data-offset="1" bindtap="changeSemester" disabled="{{!isCreator}}">›</button></view>
+  <view class="profile-card" wx:if="{{family}}">
+    <view class="profile-main">
+      <view class="child-avatar">{{childAvatarText}}</view>
+      <view class="profile-copy"><view class="profile-name">{{family.childNickname || family.childName}}</view><view class="profile-meta">{{stageName}} {{family.grade}}年级 · {{family.className || '班级待完善'}}</view></view>
+      <view class="role-chip">{{roleName}}</view>
+    </view>
+    <button class="family-row" bindtap="goMembers"><text>{{family.childNickname || family.childName}}的家庭</text><view class="family-row-end"><text>家庭成员</text><text class="chevron">›</text></view></button>
+    <view class="invite-row" wx:if="{{isCreator && inviteCodeText}}"><view class="invite-copy-text"><text class="invite-label">家庭邀请码</text><text class="invite-code">{{inviteCodeText}}</text></view><button class="invite-copy" bindtap="copyInviteCode">复制</button></view>
+    <view class="semester-row"><text class="semester-label">当前学期</text><view class="semester-control"><button data-offset="-1" bindtap="changeSemester" disabled="{{!isCreator}}" aria-label="上一学期">‹</button><text class="semester">{{family.currentSemester}}</text><button data-offset="1" bindtap="changeSemester" disabled="{{!isCreator}}" aria-label="下一学期">›</button></view></view>
+    <button wx:if="{{isCreator}}" class="profile-edit" bindtap="editFamily"><text>完善孩子资料</text><text class="profile-edit-note">{{family.childName}} · {{birthdayText}}</text><text class="chevron">›</text></button>
+  </view>
+  <view class="profile-card" wx:elif="{{guestMode}}">
+    <view class="profile-main"><view class="child-avatar">访</view><view class="profile-copy"><view class="profile-name">游客体验</view><view class="profile-meta">先浏览功能，再选择加入家庭</view></view><view class="role-chip">演示模式</view></view>
+    <button class="family-row" bindtap="requestSettingsAccess"><text>登录并加入你的家庭</text><text class="chevron">›</text></button>
   </view>
 
-  <view class="card menu-card"><view class="menu-item" bindtap="goMembers"><text>家庭成员管理</text><text>›</text></view><view class="menu-item" bindtap="goSubjects"><text>科目管理</text><text>›</text></view></view>
+  <block wx:if="{{family || guestMode}}">
+    <view class="settings-section">
+      <view class="settings-section-title">学习管理</view>
+      <view class="feature-grid">
+        <button class="feature-button" bindtap="goTimetable"><view class="feature-icon"><view class="ui-icon ui-icon-calendar"></view></view><text>课程表</text></button>
+        <button class="feature-button" bindtap="goPlans"><view class="feature-icon"><view class="ui-icon ui-icon-plan"></view></view><text>全部计划</text></button>
+        <button class="feature-button" bindtap="goSubjects"><view class="feature-icon"><view class="ui-icon ui-icon-subject"></view></view><text>科目管理</text></button>
+        <button class="feature-button" bindtap="goMembers"><view class="feature-icon"><view class="ui-icon ui-icon-family"></view></view><text>家庭成员</text></button>
+      </view>
+    </view>
 
-  <view class="card">
-    <view class="section-title">通知提醒</view>
-    <view class="subscription-card" wx:if="{{reminderStatus}}"><view><view class="subscription-title">微信提醒订阅</view><view class="subscription-status">{{reminderStatusText}}</view><view class="subscription-count">预计可用次数：{{reminderStatus.estimatedAvailableCount}} 次</view><view class="muted">待发送提醒：{{reminderStatus.pendingCount}} 条</view><view class="muted">{{reminderStatusDetail}}</view></view><view class="subscription-actions"><button class="subscription-button" size="mini" loading="{{subscribing}}" disabled="{{subscribing || !reminderStatus.enabled}}" bindtap="addReminderSubscription">增加 1 次提醒</button><button wx:if="{{!reminderStatus.enabled}}" class="subscription-retry" size="mini" loading="{{loadingReminderStatus}}" disabled="{{loadingReminderStatus}}" bindtap="retryReminderStatus">重新查询状态</button></view></view>
-    <radio-group bindchange="onAdvanceChange"><label class="check"><radio value="1440" checked="{{advanceDay}}" color="#4A90D9" />提前1天</label><label class="check"><radio value="120" checked="{{advanceHours}}" color="#4A90D9" />提前2小时</label></radio-group>
-    <checkbox-group class="targets" bindchange="onTargetsChange"><label class="check"><checkbox value="father" checked="{{targetFather}}" color="#4A90D9" />爸爸</label><label class="check"><checkbox value="mother" checked="{{targetMother}}" color="#4A90D9" />妈妈</label><label class="check"><checkbox value="child" checked="{{targetChild}}" color="#4A90D9" />孩子</label></checkbox-group>
-    <view class="switch-row" wx:if="{{isCreator}}"><text>允许普通成员修改设置</text><switch checked="{{settings.allowMemberEditSettings}}" color="#4A90D9" bindchange="onMemberEditChange" /></view>
-  </view>
+    <view class="settings-section">
+      <view class="settings-section-title">服务与偏好</view>
+      <view class="settings-group">
+        <button class="settings-item {{expandedSection === 'reminder' ? 'expanded' : ''}}" data-section="reminder" bindtap="toggleSection"><view class="settings-item-icon"><view class="ui-icon ui-icon-bell"></view></view><view class="settings-item-copy"><view class="settings-item-title">通知与提醒</view><view class="settings-item-note">微信提醒、提前时间、接收成员</view></view><text class="chevron">{{expandedSection === 'reminder' ? '⌄' : '›'}}</text></button>
+        <button class="settings-item {{expandedSection === 'ai' ? 'expanded' : ''}}" data-section="ai" bindtap="toggleSection"><view class="settings-item-icon"><view class="ui-icon ui-icon-spark"></view></view><view class="settings-item-copy"><view class="settings-item-title">AI 能力</view><view class="settings-item-note">图片识别状态与使用说明</view></view><text class="chevron">{{expandedSection === 'ai' ? '⌄' : '›'}}</text></button>
+        <button class="settings-item {{expandedSection === 'general' ? 'expanded' : ''}}" data-section="general" bindtap="toggleSection"><view class="settings-item-icon"><view class="ui-icon ui-icon-setting"></view></view><view class="settings-item-copy"><view class="settings-item-title">通用设置</view><view class="settings-item-note">当前学期与家庭编辑权限</view></view><text class="chevron">{{expandedSection === 'general' ? '⌄' : '›'}}</text></button>
+        <button class="settings-item {{expandedSection === 'privacy' ? 'expanded' : ''}}" data-section="privacy" bindtap="toggleSection"><view class="settings-item-icon"><view class="ui-icon ui-icon-shield"></view></view><view class="settings-item-copy"><view class="settings-item-title">隐私与关于</view><view class="settings-item-note">隐私保护指引与版本信息</view></view><text class="chevron">{{expandedSection === 'privacy' ? '⌄' : '›'}}</text></button>
+      </view>
+    </view>
 
-  <view class="card ai-card">
-    <view class="section-title">AI 能力（预留）</view>
-    <view class="switch-row"><text>启用 AI</text><switch checked="{{false}}" disabled="{{true}}" /></view>
-    <view class="field"><text class="field-label">供应商</text><picker range="{{providerLabels}}" value="{{providerIndex}}" disabled="{{!isCreator}}" bindchange="onProviderChange"><view class="picker">{{providerLabels[providerIndex]}}</view></picker></view>
-    <view class="field"><text class="field-label">Base URL</text><input class="input" value="{{settings.aiBaseUrl}}" disabled="{{!isCreator}}" data-field="aiBaseUrl" bindinput="onSettingInput" placeholder="由服务端启用后生效" /></view>
-    <view class="field"><text class="field-label">模型名称</text><input class="input" value="{{settings.aiModel}}" disabled="{{!isCreator}}" data-field="aiModel" bindinput="onSettingInput" /></view>
-    <view class="security-tip">API Key 不在小程序端录入或回显；正式启用时应通过云环境安全配置注入。</view>
-  </view>
-  <button class="primary-button save" loading="{{saving}}" disabled="{{saving || !canEditSettings}}" bindtap="save">保存设置</button>
-  <view class="about">成长搭档 v1.0.2</view>
+    <view class="settings-panel" wx:if="{{expandedSection === 'reminder'}}">
+      <view class="panel-heading"><text>通知与提醒</text><button class="panel-close" data-section="reminder" bindtap="toggleSection" aria-label="收起通知与提醒">×</button></view>
+      <view class="subscription-card" wx:if="{{reminderStatus}}">
+        <view class="subscription-title">微信提醒订阅</view><view class="subscription-status">{{reminderStatusText}}</view>
+        <view class="subscription-count">预计可用 {{reminderStatus.estimatedAvailableCount}} 次 · 待发送 {{reminderStatus.pendingCount}} 条</view>
+        <view class="subscription-detail">{{reminderStatusDetail}}</view>
+        <view class="subscription-actions"><button class="subscription-button" loading="{{subscribing}}" disabled="{{subscribing || !reminderStatus.enabled}}" bindtap="addReminderSubscription">增加 1 次提醒</button><button wx:if="{{!reminderStatus.enabled}}" class="subscription-retry" loading="{{loadingReminderStatus}}" disabled="{{loadingReminderStatus}}" bindtap="retryReminderStatus">重新查询</button></view>
+      </view>
+      <view class="settings-field"><view class="settings-field-label">默认提前提醒</view><radio-group class="choice-row" bindchange="onAdvanceChange"><label class="check"><radio value="1440" checked="{{advanceDay}}" disabled="{{!canEditSettings || saving}}" color="#397BC5" />提前1天</label><label class="check"><radio value="120" checked="{{advanceHours}}" disabled="{{!canEditSettings || saving}}" color="#397BC5" />提前2小时</label></radio-group></view>
+      <view class="settings-field"><view class="settings-field-label">默认接收成员</view><checkbox-group class="choice-row" bindchange="onTargetsChange"><label class="check"><checkbox value="father" checked="{{targetFather}}" disabled="{{!canEditSettings || saving}}" color="#397BC5" />爸爸</label><label class="check"><checkbox value="mother" checked="{{targetMother}}" disabled="{{!canEditSettings || saving}}" color="#397BC5" />妈妈</label><label class="check"><checkbox value="child" checked="{{targetChild}}" disabled="{{!canEditSettings || saving}}" color="#397BC5" />孩子</label></checkbox-group></view>
+      <button wx:if="{{canEditSettings}}" class="primary-button" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存设置</button>
+      <view wx:else class="settings-readonly-note">当前账号可查看设置，修改需家庭管理员授权。</view>
+    </view>
+
+    <view class="settings-panel" wx:if="{{expandedSection === 'ai'}}">
+      <view class="panel-heading"><text>AI 能力</text><button class="panel-close" data-section="ai" bindtap="toggleSection" aria-label="收起AI能力">×</button></view>
+      <view class="service-heading"><view class="service-title">AI 图片识别</view><view class="service-note">支持作业、通知与课程表图片，识别结果需核对后保存。实际供应商与模型由云端安全配置控制。</view></view>
+      <view class="field"><text class="field-label">供应商偏好</text><picker range="{{providerLabels}}" value="{{providerIndex}}" disabled="{{!isCreator || saving}}" bindchange="onProviderChange"><view class="picker">{{providerLabels[providerIndex]}}</view></picker></view>
+      <view class="field"><text class="field-label">Base URL</text><input class="input" value="{{settings.aiBaseUrl}}" disabled="{{!isCreator || saving}}" data-field="aiBaseUrl" bindinput="onSettingInput" placeholder="由服务端启用后生效" /></view>
+      <view class="field"><text class="field-label">模型偏好</text><input class="input" value="{{settings.aiModel}}" disabled="{{!isCreator || saving}}" data-field="aiModel" bindinput="onSettingInput" placeholder="实际模型以云端配置为准" /></view>
+      <view class="security-tip">API Key 不在小程序端录入或回显；以上偏好不会直接改变正式识别服务。</view>
+      <button wx:if="{{isCreator}}" class="primary-button panel-save" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存设置</button>
+    </view>
+
+    <view class="settings-panel" wx:if="{{expandedSection === 'general'}}">
+      <view class="panel-heading"><text>通用设置</text><button class="panel-close" data-section="general" bindtap="toggleSection" aria-label="收起通用设置">×</button></view>
+      <view class="service-note">当前学期：{{family.currentSemester}}。家庭管理员可在上方资料卡中切换学期，历史数据不会删除。</view>
+      <view class="switch-row" wx:if="{{isCreator}}"><view class="switch-copy"><view class="switch-title">允许普通成员修改设置</view><view class="switch-note">不影响孩子账号权限</view></view><switch checked="{{settings.allowMemberEditSettings}}" disabled="{{saving}}" color="#397BC5" bindchange="onMemberEditChange" /></view>
+      <view wx:else class="settings-readonly-note">家庭编辑权限由家庭管理员维护。</view>
+      <button wx:if="{{isCreator}}" class="primary-button panel-save" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存设置</button>
+    </view>
+
+    <view class="settings-panel" wx:if="{{expandedSection === 'privacy'}}">
+      <view class="panel-heading"><text>隐私与关于</text><button class="panel-close" data-section="privacy" bindtap="toggleSection" aria-label="收起隐私与关于">×</button></view>
+      <view class="service-note">成长搭档帮助家庭共同管理作业、通知、课程表、习惯与计划。AI 识别结果由用户核对和编辑后保存。</view>
+      <view wx:if="{{guestMode}}" class="guest-note">游客内容为本地虚构示例，不读取微信昵称、头像、手机号或家庭数据，不向云端保存体验操作。</view>
+      <button class="ghost-button panel-save" bindtap="openPrivacyContract">查看用户隐私保护指引</button>
+      <view class="about">成长搭档 v1.0.4</view>
+    </view>
+  </block>
+  <view class="empty" wx:if="{{loadFailed}}">资料暂未加载<button class="ghost-button" bindtap="load">重新加载</button></view>
+  <view class="loading" wx:if="{{loading && !family}}">资料加载中…</view>
 </view>

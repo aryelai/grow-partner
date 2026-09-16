@@ -84,6 +84,21 @@ function readFileBuffer(filePath, wxApi) {
   });
 }
 
+async function prepareEditedImage(tempFilePath, index, wxApi = wx) {
+  if (typeof tempFilePath !== "string" || !tempFilePath || !Number.isInteger(index) || index < 0 || index >= MAX_IMAGES) throw new Error("裁剪结果无效，请重新选择图片");
+  const info = await new Promise((resolve, reject) => {
+    wxApi.getFileSystemManager().getFileInfo({ filePath: tempFilePath, success: resolve, fail(error) { reject(new Error(`无法读取裁剪图片：${error.errMsg || "未知错误"}`)); } });
+  });
+  if (!Number.isInteger(info.size) || info.size <= 0) throw new Error("裁剪图片大小无效");
+  if (info.size > MAX_IMAGE_BYTES) throw new Error("裁剪图片不能超过 4 MB，请缩小识别区域");
+  const data = await readFileBuffer(tempFilePath, wxApi);
+  if (data.byteLength !== info.size) throw new Error("裁剪图片读取期间发生变化，请重新选择");
+  // 微信图片编辑器的临时路径可能没有扩展名，以实际文件头确认格式。
+  const mimeType = detectImageMimeType(data);
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) throw new Error("裁剪图片仅支持 JPEG、PNG 格式");
+  return { tempFilePath, name: `image-${index + 1}.${mimeType === "image/png" ? "png" : "jpg"}`, mimeType, size: info.size };
+}
+
 function requestUpload(options, wxApi, onRequestTask) {
   return new Promise((resolve, reject) => {
     const requestTask = wxApi.request({
@@ -308,6 +323,7 @@ module.exports = {
   MAX_IMAGE_BYTES,
   MAX_DRAFTS,
   validateSelectedFiles,
+  prepareEditedImage,
   uploadFileWithCredential,
   createEditableDrafts,
   checkPossibleDuplicates,

@@ -37,7 +37,7 @@ Page({
       if (data.registered && data.user && data.user.familyId && data.family) {
         getApp().globalData.user = data.user;
         getApp().globalData.family = data.family;
-        wx.switchTab({ url: "/pages/homework-list/homework-list" });
+        wx.switchTab({ url: "/pages/home/home" });
         return;
       }
       const registrationMode = normalizeRegistrationMode(data.registrationMode);
@@ -63,7 +63,7 @@ Page({
   },
 
   continueExperience() {
-    wx.switchTab({ url: "/pages/homework-list/homework-list" });
+    wx.switchTab({ url: "/pages/home/home" });
   },
 
   onNicknameInput(event) {

@@ -67,6 +67,9 @@ function loadCloudFunction(name, options = {}) {
         vm.runInContext(fs.readFileSync(policyPath, "utf8"), policyContext, { filename: policyPath });
         return policyModule.exports;
       }
+      if (name === "timetable" && request === "./core") {
+        return require("../cloudfunctions/timetable/core");
+      }
       throw new Error(`测试未实现依赖：${request}`);
     },
   });
@@ -77,7 +80,7 @@ function loadCloudFunction(name, options = {}) {
   };
 }
 
-for (const name of ["homework", "notice", "habit", "plan", "settings", "reminder"]) {
+for (const name of ["homework", "notice", "habit", "plan", "settings", "reminder", "timetable"]) {
   test(`${name}云函数在缺少OpenID时不访问数据库`, async () => {
     const fixture = loadCloudFunction(name);
 
@@ -88,11 +91,11 @@ for (const name of ["homework", "notice", "habit", "plan", "settings", "reminder
   });
 }
 
-for (const name of ["homework", "notice", "habit", "plan", "settings", "reminder"]) {
+for (const name of ["homework", "notice", "habit", "plan", "settings", "reminder", "timetable"]) {
   test(`${name}云函数拒绝未知用户角色`, async () => {
     const fixture = loadCloudFunction(name, { openid: "test-openid", role: "unexpected" });
 
-    const result = await fixture.main({ action: "unsupported" });
+    const result = await fixture.main({ action: name === "timetable" ? "get" : "unsupported" });
 
     assert.equal(result.success, false);
     assert.equal(result.message, "请先登录并加入家庭");

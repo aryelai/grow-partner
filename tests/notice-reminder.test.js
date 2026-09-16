@@ -93,6 +93,7 @@ function loadNoticeFunction(options = {}) {
     exports: moduleValue.exports,
     require(request) {
       if (request === "wx-server-sdk") return cloud;
+      if (request === "crypto") return require("node:crypto");
       if (request === "./reminder-policy") {
         const policyPath = path.join(__dirname, "../cloudfunctions/notice/reminder-policy.js");
         const policyModule = { exports: {} };

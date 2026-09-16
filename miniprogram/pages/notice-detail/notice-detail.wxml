@@ -1,9 +1,12 @@
 <view class="page" wx:if="{{item}}">
   <view class="card">
     <view class="detail-title"><text wx:if="{{item.hasReminder}}" class="remind-icon">◷</text>{{item.title}}</view>
+    <view class="key-time">{{item.keyTimeLabel}} · {{item.keyTimeText}}</view>
+    <view class="notice-state">{{item.isCompleted ? '✓ 事项已完成' : '事项待处理'}}</view>
     <view class="meta-grid"><text>分类：{{item.categoryName}}</text><text>学期：{{item.semester}}</text><text wx:if="{{item.source}}">来源：{{item.source}}</text><text wx:if="{{item.hasReminder}}">提醒：{{item.remindTimeText}}</text><text wx:if="{{item.hasReminder}}">提前：{{item.advanceText}}</text><text wx:if="{{item.hasReminder}}">对象：{{item.targetText || '未设置'}}</text></view>
     <view class="content" wx:if="{{item.content}}">{{item.content}}</view>
     <view class="image-grid"><image wx:for="{{item.images}}" wx:key="*this" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewImage" /></view>
   </view>
   <button wx:if="{{canEdit}}" class="primary-button action" bindtap="edit">编辑通知</button>
+  <button wx:if="{{canEdit}}" class="completion-button action" disabled="{{completionBusy}}" loading="{{completionBusy}}" bindtap="toggleCompleted">{{item.isCompleted ? '撤销完成' : '标为完成'}}</button>
 </view>

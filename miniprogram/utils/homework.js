@@ -6,9 +6,17 @@ function toTimestamp(value, fallback) {
   return Number.isNaN(timestamp) ? fallback : timestamp;
 }
 
-function sortHomework(items, now = new Date()) {
+function sortHomework(items, now = new Date(), subjectOrder = []) {
   const currentTime = now.getTime();
+  const subjectPositions = new Map((Array.isArray(subjectOrder) ? subjectOrder : [])
+    .filter((subject) => typeof subject === "string" && subject && subject !== "全部")
+    .map((subject, index) => [subject, index]));
   return [...items].sort((left, right) => {
+    if (subjectPositions.size) {
+      const leftPosition = subjectPositions.has(left.subject) ? subjectPositions.get(left.subject) : Number.POSITIVE_INFINITY;
+      const rightPosition = subjectPositions.has(right.subject) ? subjectPositions.get(right.subject) : Number.POSITIVE_INFINITY;
+      if (leftPosition !== rightPosition) return leftPosition - rightPosition;
+    }
     if (Boolean(left.isCompleted) !== Boolean(right.isCompleted)) {
       return left.isCompleted ? 1 : -1;
     }

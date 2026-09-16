@@ -17,6 +17,14 @@ function formatHomeworkDate(value) {
   return `${value} ${["周日", "周一", "周二", "周三", "周四", "周五", "周六"][weekday]}`;
 }
 
+function shiftIsoDate(value, offset) {
+  if (!validateIsoDate(value)) throw new TypeError("Invalid date value");
+  if (!Number.isInteger(offset)) throw new TypeError("Invalid date offset");
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
 function toLocalDate(value) {
   if (value instanceof Date) {
     return new Date(value.getFullYear(), value.getMonth(), value.getDate());
@@ -97,6 +105,7 @@ function getDateRangeForPlan(type, dateValue) {
 module.exports = {
   getBeijingDate,
   formatHomeworkDate,
+  shiftIsoDate,
   formatDate,
   formatDateTime,
   getCurrentSemester,
