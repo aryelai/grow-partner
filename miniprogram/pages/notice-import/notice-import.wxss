@@ -7,6 +7,7 @@
 .select-button { flex-shrink: 0; margin-left: 18rpx; padding: 0 24rpx; font-size: 25rpx; }
 .capture-guide { margin-top: 22rpx; padding: 18rpx 20rpx; border-radius: 14rpx; background: #F7FAFD; color: var(--text-light); font-size: 24rpx; line-height: 1.65; }
 .preview-grid { display: flex; flex-wrap: wrap; gap: 14rpx; margin-top: 24rpx; }
+.preview-guide { width: 100%; color: #2F6EAD; font-size: 24rpx; font-weight: 600; }
 .preview-item { position: relative; width: 180rpx; height: 180rpx; overflow: hidden; border-radius: 14rpx; background: #EEF2F6; }
 .preview-item image { width: 100%; height: 100%; }
 .preview-item text { position: absolute; right: 8rpx; bottom: 8rpx; width: 38rpx; height: 38rpx; border-radius: 50%; background: rgba(0, 0, 0, 0.58); color: #fff; text-align: center; line-height: 38rpx; }
@@ -36,6 +37,8 @@
 .time-suggestion { margin-bottom: 28rpx; padding: 20rpx; border-radius: 14rpx; background: #F5F9FD; }
 .suggested-time { color: #2F6EAD; font-size: 29rpx; font-weight: 600; }
 .time-help { margin-top: 8rpx; color: var(--text-light); font-size: 23rpx; }
+.recognized-requirements { margin-bottom: 24rpx; padding: 18rpx 20rpx; border-radius: 14rpx; background: #F5F9FD; }
+.recognized-requirement { margin-top: 10rpx; color: var(--text); font-size: 25rpx; line-height: 1.55; word-break: break-all; }
 .edit-button { width: 100%; min-height: 88rpx; }
 @media (max-width: 340px) {
   .draft-card { padding: 24rpx 22rpx; }

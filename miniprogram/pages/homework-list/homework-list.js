@@ -2,7 +2,7 @@ const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { DEFAULT_SUBJECTS } = require("../../utils/constants");
 const { getBeijingDate, shiftIsoDate, formatDateTime, formatHomeworkDate } = require("../../utils/date");
-const { sortHomework } = require("../../utils/homework");
+const { LEARNING_STATE_OPTIONS, decorateLearningState, sortHomework } = require("../../utils/homework");
 const { validateIsoDate } = require("../../utils/validation");
 const { canPerform } = require("../../utils/permissions");
 const { createListCompletion } = require("../../utils/list-completion");
@@ -25,6 +25,8 @@ Page({
 
   data: {
     semester: "2026下",
+    scope: "date",
+    scopes: [{ value: "date", label: "指定日期" }, { value: "pending", label: "全部待办" }],
     selectedDate: initialDate,
     selectedDateText: formatHomeworkDate(initialDate),
     calendarVisible: false,
@@ -45,13 +47,16 @@ Page({
     completionBusy: false,
     undoId: "",
     completionText: "",
+    learningStateBusy: false,
     loadFailed: false,
   },
 
   async onShow() {
     const entry = getApp().globalData.homeworkEntry;
     if (entry && validateIsoDate(entry.date)) {
-      this.setData({ selectedDate: entry.date, selectedDateText: formatHomeworkDate(entry.date), selectedSubject: "全部", status: "pending", keyword: "" });
+      this.setData({ scope: "date", selectedDate: entry.date, selectedDateText: formatHomeworkDate(entry.date), selectedSubject: "全部", status: "pending", keyword: "" });
+    } else if (entry && entry.scope === "pending") {
+      this.setData({ scope: "pending", selectedSubject: "全部", status: "pending", keyword: "" });
     }
     getApp().globalData.homeworkEntry = null;
     let session;
@@ -81,20 +86,20 @@ Page({
       canManage,
       canUseImport,
       canImport: false,
-      importBlockedReason: canUseImport ? "正在检查 AI 导入状态" : "",
+      importBlockedReason: canUseImport ? "正在检查智能导入服务" : "",
       guestMode: false,
     });
     const homeworkLoad = this.load(true);
     let canImport = false;
-    let importBlockedReason = "AI 作业导入暂不可用";
+    let importBlockedReason = "作业智能导入暂不可用";
     if (canUseImport) {
       try {
         const aiStatus = await callFunction("ai", "getStatus");
         canImport = aiStatus.enabled === true && aiStatus.canImport === true;
         importBlockedReason = canImport ? "" : aiStatus.blockedReason || importBlockedReason;
       } catch (error) {
-        importBlockedReason = "AI 作业导入状态加载失败，请稍后重试";
-        console.error("Load AI import status failed", { message: error.message });
+        importBlockedReason = "作业智能导入状态加载失败，请稍后重试";
+        console.error("Load homework image import status failed", { message: error.message });
       }
     }
     this.setData({ canImport, importBlockedReason });
@@ -134,25 +139,31 @@ Page({
         subject: this.data.selectedSubject,
         status: this.data.status,
         keyword: this.data.keyword,
-        homeworkDate: this.data.selectedDate,
+        ...(this.data.scope === "date" ? { homeworkDate: this.data.selectedDate } : {}),
       });
-      this.setData({ items: sortHomework(items, new Date(), this.data.subjects), page: 1, hasMore: false, loading: false, loadFailed: false });
+      this.setData({
+        items: sortHomework(items.map(decorateLearningState), new Date(), this.data.subjects, { groupBySubject: this.data.scope === "date" }),
+        page: 1,
+        hasMore: false,
+        loading: false,
+        loadFailed: false,
+      });
       return;
     }
     const page = reset ? 1 : this.data.page + 1;
     this.setData({ loading: true, loadFailed: false, ...(reset ? { items: [], hasMore: false } : {}) });
     try {
       const result = await callFunction("homework", "list", {
-        homeworkDate: this.data.selectedDate,
+        ...(this.data.scope === "date" ? { homeworkDate: this.data.selectedDate } : { semester: this.data.semester }),
         subject: this.data.selectedSubject,
-        status: this.data.status,
+        status: this.data.scope === "pending" ? "pending" : this.data.status,
         keyword: this.data.keyword,
         page,
         pageSize: 50,
       });
       if (version !== this.loadVersion) return;
       const now = new Date();
-      const items = result.items.map((item) => ({
+      const items = result.items.map((item) => decorateLearningState({
         ...item,
         images: item.images || [], videos: item.videos || [], links: item.links || [], extraTags: item.extraTags || [],
         createdByName: RELATION_NAMES[item.createdByName] || item.createdByName || "家庭成员",
@@ -162,7 +173,11 @@ Page({
         isOverdue: item.hasDeadline && !item.isCompleted && new Date(item.deadline).getTime() < now.getTime(),
       }));
       const merged = reset ? items : [...this.data.items, ...items];
-      this.setData({ items: sortHomework(merged, now, this.data.subjects), page, hasMore: result.hasMore });
+      this.setData({
+        items: sortHomework(merged, now, this.data.subjects, { groupBySubject: this.data.scope === "date" }),
+        page,
+        hasMore: result.hasMore,
+      });
     } catch (error) {
       if (version !== this.loadVersion) return;
       this.setData({ loadFailed: true });
@@ -185,6 +200,12 @@ Page({
   },
   openCalendar() { this.setData({ calendarVisible: true }); },
   closeCalendar() { this.setData({ calendarVisible: false }); },
+  selectScope(event) {
+    const scope = event.currentTarget.dataset.value;
+    if (!["date", "pending"].includes(scope) || scope === this.data.scope) return Promise.resolve();
+    this.setData({ scope, status: scope === "pending" ? "pending" : this.data.status });
+    return this.load(true);
+  },
   selectSubject(event) { this.setData({ selectedSubject: event.currentTarget.dataset.value }); this.load(true); },
   selectStatus(event) { this.setData({ status: event.currentTarget.dataset.value }); this.load(true); },
   onSearchInput(event) {
@@ -198,14 +219,14 @@ Page({
     wx.navigateTo({ url: `/pages/homework-edit/homework-edit?semester=${this.data.semester}&homeworkDate=${this.data.selectedDate}` });
   },
   importHomework() {
-    if (this.data.guestMode) { requestFamilyAccess("登录后可使用 AI 识别图片并生成作业草稿。", wx); return; }
+    if (this.data.guestMode) { requestFamilyAccess("登录后可识别作业图片并整理为可编辑草稿。", wx); return; }
     if (!canPerform(this.currentUser && this.currentUser.role, "importHomework")) {
-      wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
+      wx.showToast({ title: "孩子账号不能使用智能导入", icon: "none" });
       return;
     }
     if (!this.data.canImport) {
       wx.showModal({
-        title: "AI 导入暂不可用",
+        title: "智能导入暂不可用",
         content: this.data.importBlockedReason || "请稍后重试",
         showCancel: false,
       });
@@ -224,6 +245,30 @@ Page({
   },
   previewImage(event) { wx.previewImage({ current: event.currentTarget.dataset.url, urls: event.currentTarget.dataset.urls }); },
   toggleCompleted(event) { return completion.toggle.call(this, event); },
+  changeLearningState(event) {
+    if (this.data.guestMode) {
+      requestFamilyAccess("登录后可标记作业的学习处理状态。", wx);
+      return;
+    }
+    if (this.data.learningStateBusy || !canPerform(this.currentUser && this.currentUser.role, "updateHomeworkLearningState")) return;
+    const id = event.currentTarget.dataset.id;
+    wx.showActionSheet({
+      itemList: LEARNING_STATE_OPTIONS.map((item) => item.label),
+      success: async ({ tapIndex }) => {
+        const option = LEARNING_STATE_OPTIONS[tapIndex];
+        if (!option) return;
+        this.setData({ learningStateBusy: true });
+        try {
+          await callFunction("homework", "updateLearningState", { id, learningState: option.value });
+          await this.load(true);
+        } catch (error) {
+          showError(error, "学习状态更新失败");
+        } finally {
+          this.setData({ learningStateBusy: false });
+        }
+      },
+    });
+  },
   undoCompleted() { return completion.undo.call(this); },
   dismissCompletion() { completion.dismiss.call(this); },
   retryLoad() { return this.load(true); },

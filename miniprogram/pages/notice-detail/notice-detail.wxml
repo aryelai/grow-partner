@@ -5,6 +5,13 @@
     <view class="notice-state">{{item.isCompleted ? '✓ 事项已完成' : '事项待处理'}}</view>
     <view class="meta-grid"><text>分类：{{item.categoryName}}</text><text>学期：{{item.semester}}</text><text wx:if="{{item.source}}">来源：{{item.source}}</text><text wx:if="{{item.hasReminder}}">提醒：{{item.remindTimeText}}</text><text wx:if="{{item.hasReminder}}">提前：{{item.advanceText}}</text><text wx:if="{{item.hasReminder}}">对象：{{item.targetText || '未设置'}}</text></view>
     <view class="content" wx:if="{{item.content}}">{{item.content}}</view>
+    <view class="requirements-panel" wx:if="{{item.requirements.length}}">
+      <view class="requirements-heading"><text>内部要求清单</text><text>{{item.completedRequirementCount}}/{{item.requirementCount}}</text></view>
+      <button class="requirement-item {{requirement.isCompleted ? 'done' : ''}}" wx:for="{{item.requirements}}" wx:for-item="requirement" wx:key="id" data-id="{{requirement.id}}" disabled="{{!canEdit || requirementBusyId}}" bindtap="toggleRequirement">
+        <text class="requirement-check">{{requirement.isCompleted ? '✓' : ''}}</text>
+        <text class="requirement-text">{{requirement.text}}</text>
+      </button>
+    </view>
     <view class="image-grid"><image wx:for="{{item.images}}" wx:key="*this" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewImage" /></view>
   </view>
   <button wx:if="{{canEdit}}" class="primary-button action" bindtap="edit">编辑通知</button>

@@ -6,6 +6,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const RELATION_NAMES = { father: "爸爸", mother: "妈妈", grandpa_paternal: "爷爷", grandma_paternal: "奶奶", grandpa_maternal: "外公", grandma_maternal: "外婆", uncle_paternal: "叔叔", aunt_paternal: "婶婶", uncle_maternal: "舅舅", aunt_maternal: "舅妈", brother: "哥哥", sister: "姐姐", child: "孩子" };
 const CREATE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const LEARNING_STATES = new Set(["", "needs_help", "needs_check", "needs_correction", "corrected"]);
 
 function success(data, message = "") { return { success: true, data, message }; }
 function failure(message) { return { success: false, data: null, message }; }
@@ -33,7 +34,7 @@ function createHomeworkId(user, requestId) {
 }
 function publicHomework(value) {
   const { createdBy, ...safeValue } = value;
-  return safeValue;
+  return { ...safeValue, learningState: LEARNING_STATES.has(safeValue.learningState) ? safeValue.learningState : "" };
 }
 
 function isValidHomeworkDate(value) {
@@ -101,10 +102,10 @@ function sortItems(items) {
     if (Boolean(left.isCompleted) !== Boolean(right.isCompleted)) return left.isCompleted ? 1 : -1;
     const leftDeadline = left.hasDeadline && left.deadline ? new Date(left.deadline).getTime() : Number.POSITIVE_INFINITY;
     const rightDeadline = right.hasDeadline && right.deadline ? new Date(right.deadline).getTime() : Number.POSITIVE_INFINITY;
-    const leftActive = leftDeadline >= now;
-    const rightActive = rightDeadline >= now;
-    if (leftActive !== rightActive) return leftActive ? -1 : 1;
-    if (leftActive && leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
+    const leftOverdue = Number.isFinite(leftDeadline) && leftDeadline < now;
+    const rightOverdue = Number.isFinite(rightDeadline) && rightDeadline < now;
+    if (leftOverdue !== rightOverdue) return leftOverdue ? -1 : 1;
+    if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
     if (Boolean(left.isImportant) !== Boolean(right.isImportant)) return left.isImportant ? -1 : 1;
     return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
   });
@@ -116,7 +117,14 @@ async function list(user, event) {
   const sortMode = cleanText(event.sortMode, 32);
   if (sortMode && sortMode !== "created_at_desc") return failure("排序方式不正确");
   const query = { familyId: user.familyId };
+  const rangeStart = cleanText(event.start, 10);
+  const rangeEnd = cleanText(event.end, 10);
+  if (rangeStart || rangeEnd) {
+    if (!isValidHomeworkDate(rangeStart) || !isValidHomeworkDate(rangeEnd) || rangeStart > rangeEnd) return failure("作业日期范围不正确");
+    query.homeworkDate = db.command.gte(rangeStart).and(db.command.lte(rangeEnd));
+  }
   if (Object.hasOwn(event, "homeworkDate") && event.homeworkDate !== undefined && event.homeworkDate !== "") {
+    if (rangeStart || rangeEnd) return failure("不能同时指定单日和日期范围");
     if (!isValidHomeworkDate(event.homeworkDate)) return failure("作业日期不正确");
     query.homeworkDate = event.homeworkDate;
   }
@@ -236,6 +244,18 @@ async function toggleCompleted(user, event) {
   return success({ id: item._id, isCompleted }, isCompleted ? "已标记完成" : "已取消完成");
 }
 
+async function updateLearningState(user, event) {
+  const item = await findOwnedHomework(cleanText(event.id, 64), user.familyId);
+  if (!item) return failure("作业不存在或无权操作");
+  if (typeof event.learningState !== "string" || !LEARNING_STATES.has(event.learningState)) {
+    return failure("学习状态不正确");
+  }
+  await db.collection("homework").doc(item._id).update({
+    data: { learningState: event.learningState },
+  });
+  return success({ id: item._id, learningState: event.learningState }, "学习状态已更新");
+}
+
 exports.main = async (event = {}) => {
   const { OPENID } = cloud.getWXContext();
   try {
@@ -247,6 +267,7 @@ exports.main = async (event = {}) => {
       case "update": return await update(user, event);
       case "remove": return await remove(user, event);
       case "toggleCompleted": return await toggleCompleted(user, event);
+      case "updateLearningState": return await updateLearningState(user, event);
       default: return failure("不支持的操作");
     }
   } catch (error) {

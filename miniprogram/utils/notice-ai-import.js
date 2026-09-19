@@ -3,7 +3,7 @@ const { formatDateTime } = require("./date");
 
 const MAX_DRAFTS = 20;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
-const UNCERTAIN_FIELDS = new Set(["title", "source", "category", "content", "eventTime"]);
+const UNCERTAIN_FIELDS = new Set(["title", "source", "category", "content", "requirements", "eventTime"]);
 const CATEGORY_LABELS = new Map(NOTICE_CATEGORIES.map((item) => [item.value, item.label]));
 
 function cleanText(value, maxLength) {
@@ -14,6 +14,18 @@ function normalizeSuggestedTime(value) {
   if (!value) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function createDraftRequirements(value, requestId) {
+  return (Array.isArray(value) ? value : []).slice(0, 20).map((item, index) => {
+    const text = cleanText(typeof item === "string" ? item : item && item.text, 200);
+    if (!text) return null;
+    const sourceId = item && typeof item === "object" && typeof item.id === "string" ? item.id : "";
+    const id = /^[A-Za-z0-9_-]{8,64}$/.test(sourceId)
+      ? sourceId
+      : `notice_req_${index}_${requestId}`.slice(0, 64);
+    return { id, text, isCompleted: item && typeof item === "object" && item.isCompleted === true };
+  }).filter(Boolean);
 }
 
 function createEditableNoticeDrafts(drafts, semester, jobId) {
@@ -37,6 +49,7 @@ function createEditableNoticeDrafts(drafts, semester, jobId) {
       category,
       categoryLabel: CATEGORY_LABELS.get(category),
       content: cleanText(draft && draft.content, 3000),
+      requirements: createDraftRequirements(draft && draft.requirements, requestId),
       suggestedRemindTime,
       suggestedRemindTimeText: suggestedRemindTime ? formatDateTime(suggestedRemindTime) : "",
       uncertainFields,
@@ -63,6 +76,7 @@ function createNoticeDraftTransfer(draft) {
     source: cleanText(draft && draft.source, 60),
     category: CATEGORY_LABELS.has(rawCategory) ? rawCategory : "other",
     content: cleanText(draft && draft.content, 3000),
+    requirements: createDraftRequirements(draft && draft.requirements, requestId),
     suggestedRemindTime: normalizeSuggestedTime(draft && draft.suggestedRemindTime),
   };
 }
@@ -90,6 +104,7 @@ function mergeNoticeDrafts(drafts, jobId) {
   }).join("\n\n");
   if (fullContent.length > 3000) uncertainFields.add("content");
   const content = fullContent.slice(0, 3000);
+  const requirements = createDraftRequirements(validDrafts.flatMap((draft) => draft.requirements || []), requestId);
   const category = categories.length === 1 ? categories[0] : "other";
   const normalizedUncertainFields = [...uncertainFields].filter((field) => UNCERTAIN_FIELDS.has(field));
   return [{
@@ -102,6 +117,7 @@ function mergeNoticeDrafts(drafts, jobId) {
     category,
     categoryLabel: CATEGORY_LABELS.get(category),
     content,
+    requirements,
     suggestedRemindTime: suggestedTimes.length === 1 ? suggestedTimes[0] : "",
     suggestedRemindTimeText: suggestedTimes.length === 1 ? formatDateTime(suggestedTimes[0]) : "",
     uncertainFields: normalizedUncertainFields,
@@ -123,6 +139,7 @@ function createNoticeBatchPayload(drafts) {
       source: transfer.source,
       category: transfer.category,
       content: transfer.content,
+      requirements: transfer.requirements,
       images: [],
       remindTime: null,
       remindAdvance: [120],

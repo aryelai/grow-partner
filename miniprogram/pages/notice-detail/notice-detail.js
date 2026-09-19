@@ -35,7 +35,7 @@ Page({
   onShareAppMessage: createShareAppMessage,
   onShareTimeline: createShareTimelineMessage,
 
-  data: { id: "", item: null, canEdit: false, completionBusy: false },
+  data: { id: "", item: null, canEdit: false, completionBusy: false, requirementBusyId: "" },
   async onLoad(options) {
     const id = options && options.id;
     if (typeof id !== "string" || !NOTICE_ID_PATTERN.test(id)) {
@@ -84,6 +84,21 @@ Page({
       await this.load();
     } catch (error) { showError(error, "通知状态更新失败"); }
     finally { this.setData({ completionBusy: false }); }
+  },
+  async toggleRequirement(event) {
+    if (this.data.requirementBusyId || !this.data.item || !canPerform(this.currentUser && this.currentUser.role, "manageNotice")) return;
+    const requirementId = event.currentTarget.dataset.id;
+    const requirement = this.data.item.requirements.find((item) => item.id === requirementId);
+    if (!requirement) return;
+    this.setData({ requirementBusyId });
+    try {
+      await callFunction("notice", "toggleRequirement", { id: this.data.id, requirementId, isCompleted: !requirement.isCompleted });
+      await this.load();
+    } catch (error) {
+      showError(error, "通知要求状态更新失败");
+    } finally {
+      this.setData({ requirementBusyId: "" });
+    }
   },
   async edit() {
     let session;

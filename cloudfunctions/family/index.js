@@ -285,6 +285,30 @@ async function removeMember(openid, event) {
   return success(null, "成员已移除");
 }
 
+async function leaveFamily(openid) {
+  const user = await requireUser(openid);
+  if (!user.familyId) return failure("您尚未加入家庭");
+  if (user.role === "creator") return failure("家庭创建者不能直接退出，请先导出数据并妥善处理家庭成员");
+  if (!["member", "child"].includes(user.role)) return failure("当前家庭角色不能执行退出操作");
+  const familyId = user.familyId;
+  await db.runTransaction(async (transaction) => {
+    const latestUser = await getUser(openid, transaction);
+    if (!latestUser || latestUser.familyId !== familyId || !["member", "child"].includes(latestUser.role)) throw new Error("CONFLICT");
+    await transaction.collection("users").doc(latestUser._id).update({
+      data: {
+        familyId: "",
+        relation: "",
+        role: "",
+        previousFamilyId: familyId,
+        previousRelation: latestUser.relation,
+        previousRole: latestUser.role,
+        leftFamilyAt: new Date(),
+      },
+    });
+  });
+  return success(null, "已退出家庭，原家庭共享数据不会被删除");
+}
+
 exports.main = async (event = {}) => {
   const { OPENID } = cloud.getWXContext();
   if (!OPENID) return failure("无法识别当前微信用户");
@@ -298,6 +322,7 @@ exports.main = async (event = {}) => {
       case "get": return await getFamily(OPENID);
       case "members": return await members(OPENID);
       case "removeMember": return await removeMember(OPENID, event);
+      case "leaveFamily": return await leaveFamily(OPENID);
       default: return failure("不支持的操作");
     }
   } catch (error) {

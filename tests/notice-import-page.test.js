@@ -61,7 +61,7 @@ function createFixture() {
 test("通知导入可以一次保存当前模式下全部未保存草稿", async () => {
   const fixture = createFixture();
   fixture.page.data.drafts = [
-    { requestId: "01010101010101010101010101010101_0", semester: "2026下", title: "通知一", source: "班主任", category: "other", content: "内容一", saved: false },
+    { requestId: "01010101010101010101010101010101_0", semester: "2026下", title: "通知一", source: "班主任", category: "other", content: "内容一", requirements: [{ id: "draft_req_01", text: "提交回执", isCompleted: false }], saved: false },
     { requestId: "01010101010101010101010101010101_1", semester: "2026下", title: "通知二", source: "年级组", category: "activity", content: "内容二", saved: false },
   ];
   fixture.page.data.separateDrafts = structuredClone(fixture.page.data.drafts);
@@ -71,6 +71,7 @@ test("通知导入可以一次保存当前模式下全部未保存草稿", async
 
   assert.deepEqual(fixture.calls.map(({ name, action }) => [name, action]), [["notice", "create"], ["notice", "create"]]);
   assert.ok(fixture.page.data.drafts.every((draft) => draft.saved));
+  assert.deepEqual(fixture.calls[0].data.requirements, [{ id: "draft_req_01", text: "提交回执", isCompleted: false }]);
   assert.deepEqual(fixture.navigation, ["/pages/notice-list/notice-list"]);
 });
 

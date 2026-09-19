@@ -4,6 +4,10 @@
     <view class="detail-title"><text wx:if="{{item.isImportant}}" class="important">★</text><text wx:if="{{item.hasDeadline}}" class="deadline-icon">◷</text>{{item.title}}<text wx:if="{{item.extraRequirement}}" class="extra">（{{item.extraRequirement}}）</text></view>
     <view class="meta-grid"><text>学期：{{item.semester}}</text><text>录入：{{item.createdByName}}</text><text>录入时间：{{item.createdAtText}}</text><text wx:if="{{item.hasDeadline}}" class="{{item.isOverdue ? 'overdue' : ''}}">截止时间：{{item.deadlineText}}</text></view>
     <view class="content"><view class="section-title">详细要求</view><view class="{{item.content ? '' : 'no-requirements'}}">{{item.content || '无'}}</view></view>
+    <view class="learning-state-panel">
+      <view><view class="section-title learning-state-title">学习状态</view><view class="learning-state-value {{item.learningState || 'empty'}}">{{item.learningState ? item.learningStateText : '未标记'}}</view></view>
+      <button wx:if="{{canUpdateLearningState}}" class="learning-state-button" disabled="{{learningStateBusy}}" bindtap="changeLearningState">{{item.learningState ? '修改状态' : '标记状态'}}</button>
+    </view>
     <view class="image-grid"><image wx:for="{{item.images}}" wx:key="*this" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewImage" /></view>
     <video wx:if="{{item.videos.length}}" class="video" src="{{item.videos[0]}}" controls="{{true}}" />
     <view class="link" wx:for="{{item.links}}" wx:key="*this" data-url="{{item}}" bindtap="copyLink">{{item}}</view>

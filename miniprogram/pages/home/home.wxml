@@ -41,7 +41,7 @@
     <view class="home-list-card" wx:if="{{homeworkItems.length}}">
       <view class="home-task-row" wx:for="{{homeworkItems}}" wx:key="_id">
         <button class="task-check-button" data-id="{{item._id}}" disabled="{{completionBusy}}" catchtap="toggleHomework" aria-label="标为完成：{{item.title}}"><text class="task-check">✓</text></button>
-        <view class="task-copy" data-id="{{item._id}}" bindtap="openHomework"><view class="task-title">{{item.title}}</view><view class="task-meta">{{item.homeworkDateText}}</view></view>
+        <view class="task-copy" data-id="{{item._id}}" bindtap="openHomework"><view class="task-title">{{item.title}}</view><view class="task-meta {{item.isOverdue ? 'overdue' : ''}}">{{item.isOverdue ? '已逾期 · ' : ''}}{{item.homeworkDateText}}<text wx:if="{{item.learningState}}"> · {{item.learningStateText}}</text></view></view>
         <view class="subject-badge" data-id="{{item._id}}" bindtap="openHomework">{{item.subject}}</view>
       </view>
     </view>
@@ -78,8 +78,8 @@
   <view class="home-section">
     <view class="home-section-heading"><text class="home-section-title">快捷处理</text></view>
     <view class="quick-row">
-      <view class="quick-action" bindtap="importHomework"><text class="quick-symbol">AI</text><text>导入作业</text></view>
-      <view class="quick-action" bindtap="importNotice"><text class="quick-symbol">告</text><text>导入通知</text></view>
+      <view class="quick-action" bindtap="importHomework"><text class="quick-symbol">识</text><text>智能导入作业</text></view>
+      <view class="quick-action" bindtap="importNotice"><text class="quick-symbol">告</text><text>智能导入通知</text></view>
       <view class="quick-action" bindtap="createPlan"><text class="quick-symbol">＋</text><text>新增计划</text></view>
     </view>
   </view>

@@ -4,6 +4,7 @@ const { formatHomeworkDate } = require("../../utils/date");
 const { decorateNotice } = require("../../utils/notice");
 const { createListCompletion } = require("../../utils/list-completion");
 const { canPerform } = require("../../utils/permissions");
+const { decorateLearningState } = require("../../utils/homework");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 const {
   createGuestHomeworkItems,
@@ -22,9 +23,11 @@ const {
 } = require("../../utils/home");
 
 function decorateHomework(items) {
-  return (Array.isArray(items) ? items : []).slice(0, 3).map((item) => ({
+  const now = Date.now();
+  return (Array.isArray(items) ? items : []).slice(0, 3).map((item) => decorateLearningState({
     ...item,
     homeworkDateText: formatHomeworkDate(item.homeworkDate),
+    isOverdue: item.hasDeadline && item.deadline && !item.isCompleted && new Date(item.deadline).getTime() < now,
   }));
 }
 
@@ -155,7 +158,7 @@ Page({
       canImportHomework: canPerform(session.user.role, "importHomework"),
       canManageNotice: canPerform(session.user.role, "manageNotice"),
       canImportNotice: canPerform(session.user.role, "importNotice"),
-      canManagePlan: canPerform(session.user.role, "managePlan"),
+      canManagePlan: canPerform(session.user.role, "createOwnPlan"),
     });
   },
 
@@ -163,7 +166,10 @@ Page({
     this.onShow().finally(() => wx.stopPullDownRefresh());
   },
 
-  goHomework() { wx.switchTab({ url: "/pages/homework-list/homework-list" }); },
+  goHomework() {
+    getApp().globalData.homeworkEntry = { scope: "pending" };
+    wx.switchTab({ url: "/pages/homework-list/homework-list" });
+  },
   goNotices() { wx.switchTab({ url: "/pages/notice-list/notice-list" }); },
   goHabits() { getApp().globalData.growthEntry = { view: "habit" }; wx.switchTab({ url: "/pages/habit-list/habit-list" }); },
   goMe() { wx.switchTab({ url: "/pages/settings/settings" }); },
@@ -204,14 +210,14 @@ Page({
   onHide() { this.dismissCompletion(); },
 
   importHomework() {
-    if (this.data.guestMode) { requestFamilyAccess("登录后可使用 AI 识别图片并生成作业草稿。", wx); return; }
-    if (!this.data.canImportHomework) { wx.showToast({ title: "当前账号不能使用 AI 导入", icon: "none" }); return; }
+    if (this.data.guestMode) { requestFamilyAccess("登录后可识别作业图片并整理为可编辑草稿。", wx); return; }
+    if (!this.data.canImportHomework) { wx.showToast({ title: "当前账号不能使用智能导入", icon: "none" }); return; }
     wx.navigateTo({ url: `/pages/homework-import/homework-import?semester=${encodeURIComponent(this.data.semester)}` });
   },
 
   importNotice() {
-    if (this.data.guestMode) { requestFamilyAccess("登录后可使用 AI 识别截图并生成通知草稿。", wx); return; }
-    if (!this.data.canImportNotice) { wx.showToast({ title: "当前账号不能使用 AI 导入", icon: "none" }); return; }
+    if (this.data.guestMode) { requestFamilyAccess("登录后可识别通知截图并整理为可编辑草稿。", wx); return; }
+    if (!this.data.canImportNotice) { wx.showToast({ title: "当前账号不能使用智能导入", icon: "none" }); return; }
     wx.navigateTo({ url: "/pages/notice-import/notice-import" });
   },
 

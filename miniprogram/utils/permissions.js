@@ -9,10 +9,12 @@ const CREATOR_ACTIONS = new Set([
   "deleteHomework",
   "requestDeleteHomework",
   "toggleHomework",
+  "updateHomeworkLearningState",
   "manageNotice",
   "manageHabit",
   "checkInHabit",
   "managePlan",
+  "createOwnPlan",
   "togglePlan",
   "manageMembers",
   "updateFamily",
@@ -30,14 +32,16 @@ const MEMBER_ACTIONS = new Set([
   "updateHomework",
   "requestDeleteHomework",
   "toggleHomework",
+  "updateHomeworkLearningState",
   "manageNotice",
   "manageHabit",
   "checkInHabit",
   "managePlan",
+  "createOwnPlan",
   "togglePlan",
 ]);
 
-const CHILD_ACTIONS = new Set(["view", "toggleHomework", "checkInHabit", "togglePlan"]);
+const CHILD_ACTIONS = new Set(["view", "toggleHomework", "updateHomeworkLearningState", "checkInHabit", "createOwnPlan", "togglePlan"]);
 
 function canPerform(role, action, context = {}) {
   if (role === "creator") {

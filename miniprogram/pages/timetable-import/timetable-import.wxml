@@ -1,7 +1,7 @@
 <view class="page timetable-import-page">
   <view class="card intro-card">
-    <view class="section-title">从课程表截图生成草稿</view>
-    <view class="muted intro-text">保留星期表头、节次和课程格。AI 结果需核对后才会合并到当前学期课程表。</view>
+    <view class="section-title">识别课程表截图</view>
+    <view class="muted intro-text">请保留星期表头、节次和课程格。识别结果需核对后才会保存到当前学期课程表。</view>
     <view class="muted intro-text">课程名称独立于作业科目，自修、自习、班会等可直接保存，不必在科目管理里添加或强行匹配。</view>
     <view class="privacy-note">截图仅用于本次识别，正常识别或取消后立即删除；异常情况下由云存储短期生命周期规则兜底删除，不保存为课程表附件。</view>
     <view wx:if="{{blockedReason}}" class="blocked-note">{{blockedReason}}</view>
@@ -10,7 +10,7 @@
   <view class="card" wx:if="{{enabled}}">
     <view class="row between"><view><view class="section-title compact-title">选择截图</view><view class="muted">仅支持 JPEG、PNG，单张不超过 4 MB</view></view><button class="ghost-button select-button" disabled="{{processing || saving}}" bindtap="chooseScreenshot">{{selectedFiles.length ? '重新选择' : '选择截图'}}</button></view>
     <view class="capture-guide">优先上传完整、横平竖直的原图；图片太长时可按星期分成 2–3 张，但每张都要保留星期和节次标识。</view>
-    <view class="preview-grid" wx:if="{{selectedFiles.length}}"><view class="preview-item" wx:for="{{selectedFiles}}" wx:key="tempFilePath"><image src="{{item.tempFilePath}}" mode="aspectFill" /><text>{{index + 1}}</text></view></view>
+    <view class="preview-grid" wx:if="{{selectedFiles.length}}"><view class="preview-guide">识别原图 · 点击放大对照</view><view class="preview-item" wx:for="{{selectedFiles}}" wx:key="tempFilePath"><image src="{{item.tempFilePath}}" mode="aspectFill" data-url="{{item.tempFilePath}}" bindtap="previewSourceImage" /><text>{{index + 1}}</text></view></view>
     <button class="primary-button recognize-button" loading="{{processing}}" disabled="{{processing || saving || !selectedFiles.length}}" bindtap="recognize">开始识别</button>
     <view class="progress-text" wx:if="{{progressText}}">{{progressText}}</view>
   </view>

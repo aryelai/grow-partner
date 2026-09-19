@@ -1,10 +1,10 @@
 <view class="page tab-page notice-page {{undoId ? 'has-feedback' : ''}}">
   <guest-banner wx:if="{{guestMode}}" />
-  <view class="list-toolbar"><text class="list-toolbar-title">通知</text><view class="list-toolbar-actions"><button wx:if="{{canUseImport || guestMode}}" class="toolbar-button {{canImport || guestMode ? '' : 'unavailable'}}" bindtap="importNotice">AI 导入</button><button wx:if="{{canManage || guestMode}}" class="toolbar-button primary" bindtap="create">＋ 新增</button><button class="toolbar-button more" bindtap="showMore" aria-label="更多通知操作"><view class="more-dots"><view class="more-dot" /><view class="more-dot" /><view class="more-dot" /></view></button></view></view>
+  <view class="list-toolbar"><text class="list-toolbar-title">通知</text><view class="list-toolbar-actions"><button wx:if="{{canUseImport || guestMode}}" class="toolbar-button {{canImport || guestMode ? '' : 'unavailable'}}" bindtap="importNotice">智能导入</button><button wx:if="{{canManage || guestMode}}" class="toolbar-button primary" bindtap="create">＋ 新增</button><button class="toolbar-button more" bindtap="showMore" aria-label="更多通知操作"><view class="more-dots"><view class="more-dot" /><view class="more-dot" /><view class="more-dot" /></view></button></view></view>
   <view class="status-row"><view wx:for="{{statuses}}" wx:key="value" class="status-item {{status === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectStatus">{{item.label}}</view></view>
   <scroll-view scroll-x="{{true}}" class="category-scroll" show-scrollbar="{{false}}"><view class="category-row"><view wx:for="{{categories}}" wx:key="value" class="tag {{category === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</view></view></scroll-view>
   <view class="search-box">⌕<input placeholder="搜索通知主题" value="{{keyword}}" bindinput="onSearchInput" /></view>
-  <view class="filter-summary" wx:if="{{!loading && !loadFailed}}">当前筛选 {{total}} 条 · 按录入时间排列</view>
+  <view class="filter-summary" wx:if="{{!loading && !loadFailed}}">当前筛选 {{total}} 条 · 按处理优先级排列</view>
   <view class="card notice-card {{item.isCompleted ? 'completed' : ''}}" wx:for="{{items}}" wx:key="_id" data-id="{{item._id}}" bindtap="view">
     <view class="notice-labels"><text class="notice-category {{item.category}}">{{item.categoryName}}</text><text class="notice-state {{item.isCompleted ? 'done' : ''}}">{{item.isCompleted ? '✓ 已完成' : '待处理'}}</text></view>
     <view class="notice-title">{{item.title}}</view>
@@ -12,6 +12,7 @@
     <view class="secondary-time" wx:if="{{item.eventTimeText && item.keyTimeLabel !== '事项'}}">事项：{{item.eventTimeText}}</view>
     <view class="secondary-time" wx:if="{{item.remindTimeText && item.keyTimeLabel !== '提醒'}}">提醒：{{item.remindTimeText}}</view>
     <view class="notice-content" wx:if="{{item.content}}">{{item.content}}</view>
+    <view class="requirement-progress" wx:if="{{item.requirementCount}}">要求清单 {{item.completedRequirementCount}}/{{item.requirementCount}} 项已完成</view>
     <view class="card-footer"><text class="notice-source">{{item.source || '未填写来源'}}</text><button wx:if="{{canManage || guestMode}}" class="completion-button" data-id="{{item._id}}" disabled="{{completionBusy || loading}}" catchtap="toggleCompleted">{{item.isCompleted ? '撤销完成' : '标为完成'}}</button></view>
   </view>
   <view class="empty" wx:if="{{loadFailed}}">通知加载失败<button class="ghost-button" bindtap="retryLoad">重新加载</button></view>

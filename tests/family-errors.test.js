@@ -99,6 +99,40 @@ function loadFamilyMembersFunction(memberRecords) {
   return moduleValue.exports.main;
 }
 
+function loadFamilyLeaveFunction(role) {
+  const sourcePath = path.join(__dirname, "../cloudfunctions/family/index.js");
+  const source = fs.readFileSync(sourcePath, "utf8");
+  const user = { _id: "user-id", openid: "member-openid", familyId: "family-id", relation: "mother", role };
+  const database = {
+    collection(name) {
+      assert.equal(name, "users");
+      return {
+        where(query) { return { limit() { return { async get() { return { data: query.openid === user.openid ? [{ ...user }] : [] }; } }; } }; },
+        doc(id) { return { async update({ data }) { if (id === user._id) Object.assign(user, data); } }; },
+      };
+    },
+    async runTransaction(callback) { return callback({ collection: (name) => database.collection(name) }); },
+  };
+  const cloud = {
+    DYNAMIC_CURRENT_ENV: "test",
+    init() {},
+    database() { return database; },
+    getWXContext() { return { OPENID: user.openid }; },
+  };
+  const moduleValue = { exports: {} };
+  const context = vm.createContext({
+    console: { error() {} }, Date, Error, module: moduleValue, exports: moduleValue.exports,
+    require(request) {
+      if (request === "wx-server-sdk") return cloud;
+      if (request === "crypto") return require("node:crypto");
+      if (request === "./invite-code") return require("../cloudfunctions/family/invite-code");
+      throw new Error(`测试未实现依赖：${request}`);
+    },
+  });
+  vm.runInContext(source, context, { filename: sourcePath });
+  return { main: moduleValue.exports.main, user };
+}
+
 test("提交加入申请时不会把数据库故障伪装成家庭不存在", async () => {
   const main = loadFamilyFunction(new Error("database timeout"));
 
@@ -171,4 +205,32 @@ test("家庭成员列表不会返回历史手机号和身份字段", async () =>
     Object.keys(result.data.members[1]).sort(),
     ["_id", "avatar", "createdAt", "nickname", "relation", "relationName", "role", "roleName"].sort(),
   );
+});
+
+test("普通成员和孩子可主动退出家庭并保留可审计的原关系，其他角色不能退出", async () => {
+  const member = loadFamilyLeaveFunction("member");
+  const result = await member.main({ action: "leaveFamily" });
+  assert.equal(result.success, true);
+  assert.equal(member.user.familyId, "");
+  assert.equal(member.user.previousFamilyId, "family-id");
+  assert.equal(member.user.previousRelation, "mother");
+  assert.equal(member.user.previousRole, "member");
+  assert.ok(member.user.leftFamilyAt instanceof Date);
+
+  const child = loadFamilyLeaveFunction("child");
+  const childResult = await child.main({ action: "leaveFamily" });
+  assert.equal(childResult.success, true);
+  assert.equal(child.user.previousRole, "child");
+
+  const creator = loadFamilyLeaveFunction("creator");
+  const denied = await creator.main({ action: "leaveFamily" });
+  assert.equal(denied.success, false);
+  assert.match(denied.message, /不能直接退出/);
+  assert.equal(creator.user.familyId, "family-id");
+
+  const unknownRole = loadFamilyLeaveFunction("unknown");
+  const unknownDenied = await unknownRole.main({ action: "leaveFamily" });
+  assert.equal(unknownDenied.success, false);
+  assert.match(unknownDenied.message, /角色不能执行/);
+  assert.equal(unknownRole.user.familyId, "family-id");
 });

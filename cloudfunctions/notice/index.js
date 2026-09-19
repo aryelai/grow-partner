@@ -13,6 +13,8 @@ const VALID_REMINDER_TARGETS = new Set([
 ]);
 const RELATION_NAMES = { father: "爸爸", mother: "妈妈", grandpa_paternal: "爷爷", grandma_paternal: "奶奶", grandpa_maternal: "外公", grandma_maternal: "外婆", uncle_paternal: "叔叔", aunt_paternal: "婶婶", uncle_maternal: "舅舅", aunt_maternal: "舅妈", brother: "哥哥", sister: "姐姐", child: "孩子" };
 const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const REQUIREMENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
+const MAX_REQUIREMENTS = 20;
 
 function success(data, message = "") { return { success: true, data, message }; }
 function failure(message) { return { success: false, data: null, message }; }
@@ -29,7 +31,33 @@ function createNoticeId(user, requestId) {
 }
 function publicNotice(value) {
   const { createdBy, aiImportRequestId, ...safeValue } = value;
-  return { ...safeValue, isCompleted: value.isCompleted === true };
+  return {
+    ...safeValue,
+    isCompleted: value.isCompleted === true,
+    requirements: Array.isArray(value.requirements)
+      ? value.requirements.filter((item) => item && typeof item.text === "string" && REQUIREMENT_ID_PATTERN.test(item.id)).map((item) => ({
+        id: item.id,
+        text: item.text.trim().slice(0, 200),
+        isCompleted: item.isCompleted === true,
+      })).filter((item) => item.text)
+      : [],
+  };
+}
+
+function validateRequirements(value) {
+  if (!Array.isArray(value) || value.length > MAX_REQUIREMENTS) return { error: "通知要求清单格式不正确" };
+  const ids = new Set();
+  const requirements = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item) || !REQUIREMENT_ID_PATTERN.test(item.id || "")) {
+      return { error: "通知要求清单格式不正确" };
+    }
+    const text = cleanText(item.text, 200);
+    if (!text || ids.has(item.id)) return { error: "通知要求清单存在空内容或重复编号" };
+    ids.add(item.id);
+    requirements.push({ id: item.id, text, isCompleted: item.isCompleted === true });
+  }
+  return { requirements };
 }
 
 function optionalTime(value) {
@@ -75,10 +103,14 @@ function validatePayload(event) {
     ? [...new Set(event.remindTargets.filter((value) => VALID_REMINDER_TARGETS.has(value)))]
     : [];
   const remindTime = event.remindTime ? new Date(event.remindTime) : null;
+  const requirementResult = Object.prototype.hasOwnProperty.call(event, "requirements")
+    ? validateRequirements(event.requirements)
+    : null;
   if (!title || !/^\d{4}(上|下)$/.test(semester) || !VALID_CATEGORIES.has(category)) return { error: "请完整填写标题、学期和分类" };
   if (images.some((item) => typeof item !== "string" || !item.startsWith("cloud://"))) return { error: "图片地址格式不正确" };
   if (remindTime && Number.isNaN(remindTime.getTime())) return { error: "提醒时间格式不正确" };
   if (remindTime && remindAdvance === null) return { error: "每条通知只能选择一个提醒时间" };
+  if (requirementResult && requirementResult.error) return { error: requirementResult.error };
   const times = {};
   for (const field of ["eventTime", "deadline"]) {
     if (!Object.prototype.hasOwnProperty.call(event, field)) continue;
@@ -86,7 +118,27 @@ function validatePayload(event) {
     if (time === undefined) return { error: "事项或截止时间格式不正确" };
     times[field] = time;
   }
-  return { data: { semester, title, content: cleanText(event.content, 3000), images, source: cleanText(event.source, 60), category, remindTime, remindAdvance: remindAdvance === null ? [] : [remindAdvance], remindTargets, ...times } };
+  return { data: { semester, title, content: cleanText(event.content, 3000), images, source: cleanText(event.source, 60), category, remindTime, remindAdvance: remindAdvance === null ? [] : [remindAdvance], remindTargets, ...(requirementResult ? { requirements: requirementResult.requirements } : {}), ...times } };
+}
+
+function timeValue(value) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? Number.POSITIVE_INFINITY : timestamp;
+}
+
+function sortNotices(items) {
+  const now = Date.now();
+  return [...items].sort((left, right) => {
+    if ((left.isCompleted === true) !== (right.isCompleted === true)) return left.isCompleted === true ? 1 : -1;
+    const leftTime = Math.min(timeValue(left.deadline), timeValue(left.eventTime));
+    const rightTime = Math.min(timeValue(right.deadline), timeValue(right.eventTime));
+    const leftOverdue = Number.isFinite(leftTime) && leftTime < now;
+    const rightOverdue = Number.isFinite(rightTime) && rightTime < now;
+    if (leftOverdue !== rightOverdue) return leftOverdue ? -1 : 1;
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    return timeValue(right.createdAt) - timeValue(left.createdAt);
+  });
 }
 
 async function list(user, event) {
@@ -105,11 +157,22 @@ async function list(user, event) {
   const keyword = cleanText(event.keyword, 50);
   if (keyword) query.title = db.RegExp({ regexp: escapeRegExp(keyword), options: "i" });
   const collection = db.collection("notices").where(query);
-  const [countResult, dataResult] = await Promise.all([
-    collection.count(),
-    collection.orderBy("createdAt", "desc").skip((page - 1) * pageSize).limit(pageSize).get(),
-  ]);
-  return success({ items: dataResult.data.map(publicNotice), page, total: countResult.total, hasMore: page * pageSize < countResult.total });
+  const countResult = await collection.count();
+  const candidateLimit = Math.min(countResult.total, 500);
+  const candidates = [];
+  for (let offset = 0; offset < candidateLimit; offset += 50) {
+    const batch = await collection.orderBy("createdAt", "desc").skip(offset).limit(Math.min(50, candidateLimit - offset)).get();
+    candidates.push(...batch.data);
+  }
+  const sorted = sortNotices(candidates);
+  const start = (page - 1) * pageSize;
+  return success({
+    items: sorted.slice(start, start + pageSize).map(publicNotice),
+    page,
+    total: countResult.total,
+    hasMore: page * pageSize < candidateLimit,
+    truncated: countResult.total > candidateLimit,
+  });
 }
 
 async function get(user, event) {
@@ -148,7 +211,7 @@ async function save(user, event, updating) {
     if (error.message === "MISSING_TARGETS") return failure("请至少选择一个提醒对象");
     throw error;
   }
-  const data = { familyId: user.familyId, ...payload.data, ...(clientRequestId ? { aiImportRequestId: clientRequestId } : {}), isCompleted: false, completedAt: null, completedByName: "", createdAt: new Date(), createdBy: user.openid, createdByName: RELATION_NAMES[user.relation] || user.nickname };
+  const data = { familyId: user.familyId, requirements: [], ...payload.data, ...(clientRequestId ? { aiImportRequestId: clientRequestId } : {}), isCompleted: false, completedAt: null, completedByName: "", createdAt: new Date(), createdBy: user.openid, createdByName: RELATION_NAMES[user.relation] || user.nickname };
   if (clientRequestId) {
     const id = createNoticeId(user, clientRequestId);
     const result = await db.runTransaction(async (transaction) => {
@@ -192,6 +255,32 @@ async function toggleCompleted(user, event) {
   return result ? success(result, result.isCompleted ? "通知事项已完成" : "通知已恢复待处理") : failure("通知不存在或无权维护");
 }
 
+async function toggleRequirement(user, event) {
+  if (user.role === "child") return failure("孩子账号不能维护通知");
+  if (typeof event.id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(event.id)
+    || typeof event.requirementId !== "string" || !REQUIREMENT_ID_PATTERN.test(event.requirementId)
+    || typeof event.isCompleted !== "boolean") return failure("通知要求标识或完成状态不正确");
+  const result = await db.runTransaction(async (transaction) => {
+    const item = await findNotice(event.id, user.familyId, transaction);
+    if (!item) return null;
+    const requirements = Array.isArray(item.requirements) ? item.requirements.map((requirement) => ({ ...requirement })) : [];
+    const target = requirements.find((requirement) => requirement.id === event.requirementId);
+    if (!target) return { missing: true };
+    target.isCompleted = event.isCompleted;
+    await transaction.collection("notices").doc(item._id).update({ data: { requirements } });
+    return {
+      id: item._id,
+      requirementId: event.requirementId,
+      isCompleted: event.isCompleted,
+      completedCount: requirements.filter((requirement) => requirement.isCompleted === true).length,
+      totalCount: requirements.length,
+    };
+  });
+  if (!result) return failure("通知不存在或无权维护");
+  if (result.missing) return failure("通知要求不存在");
+  return success(result, event.isCompleted ? "该项要求已完成" : "该项要求已恢复待处理");
+}
+
 async function remove(user, event) {
   if (user.role === "child") return failure("孩子账号不能删除通知");
   const item = await findNotice(cleanText(event.id, 64), user.familyId);
@@ -210,6 +299,7 @@ exports.main = async (event = {}) => {
       case "create": return await save(user, event, false);
       case "update": return await save(user, event, true);
       case "toggleCompleted": return await toggleCompleted(user, event);
+      case "toggleRequirement": return await toggleRequirement(user, event);
       case "remove": return await remove(user, event);
       default: return failure("不支持的操作");
     }

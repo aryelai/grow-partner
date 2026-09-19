@@ -15,10 +15,22 @@ function loadHomeworkFunction(options = {}) {
     _id: "user-id",
     openid: "openid-id",
     familyId: "family-id",
-    role: "creator",
+    role: options.role || "creator",
     relation: "father",
     nickname: "家长",
   };
+  const command = {
+    gte(value) { return { range: { gte: value }, and(other) { return { range: { ...this.range, ...other.range } }; } }; },
+    lte(value) { return { range: { lte: value }, and(other) { return { range: { ...this.range, ...other.range } }; } }; },
+  };
+
+  function matchesQuery(actual, expected) {
+    if (expected && expected.range) {
+      return (expected.range.gte === undefined || actual >= expected.range.gte)
+        && (expected.range.lte === undefined || actual <= expected.range.lte);
+    }
+    return actual === expected;
+  }
 
   function missingDocument() {
     const error = new Error("document does not exist");
@@ -57,7 +69,7 @@ function loadHomeworkFunction(options = {}) {
         where(query) {
           let items = [...storage.entries()]
             .map(([id, value]) => ({ _id: id, ...structuredClone(value) }))
-            .filter((item) => Object.entries(query).every(([key, value]) => item[key] === value));
+            .filter((item) => Object.entries(query).every(([key, value]) => matchesQuery(item[key], value)));
           let offset = 0;
           let limitValue = items.length;
           const chain = {
@@ -82,6 +94,7 @@ function loadHomeworkFunction(options = {}) {
   }
 
   const database = {
+    command,
     collection(name) { return collection(name, documents); },
     RegExp({ regexp, options: flags }) { return new RegExp(regexp, flags); },
     async runTransaction(callback) {
@@ -128,6 +141,22 @@ function loadHomeworkFunction(options = {}) {
     getTransactionAttempts: () => transactionAttempts,
   };
 }
+
+test("作业列表支持本周日期范围且拒绝与单日筛选混用", async () => {
+  const fixture = loadHomeworkFunction({ homework: [
+    { _id: "before", familyId: "family-id", semester: "2026下", homeworkDate: "2026-09-13", title: "周前", createdAt: new Date("2026-09-13T01:00:00Z") },
+    { _id: "monday", familyId: "family-id", semester: "2026下", homeworkDate: "2026-09-14", title: "周一", createdAt: new Date("2026-09-14T01:00:00Z") },
+    { _id: "sunday", familyId: "family-id", semester: "2026下", homeworkDate: "2026-09-20", title: "周日", createdAt: new Date("2026-09-20T01:00:00Z") },
+    { _id: "after", familyId: "family-id", semester: "2026下", homeworkDate: "2026-09-21", title: "周后", createdAt: new Date("2026-09-21T01:00:00Z") },
+  ] });
+
+  const result = await fixture.main({ action: "list", semester: "2026下", start: "2026-09-14", end: "2026-09-20", pageSize: 50 });
+  assert.equal(result.success, true);
+  assert.deepEqual([...result.data.items].map((item) => item.homeworkDate).sort(), ["2026-09-14", "2026-09-20"]);
+  const invalid = await fixture.main({ action: "list", start: "2026-09-14", end: "2026-09-20", homeworkDate: "2026-09-16" });
+  assert.equal(invalid.success, false);
+  assert.equal(invalid.message, "不能同时指定单日和日期范围");
+});
 
 function createInput(overrides = {}) {
   return {
@@ -253,6 +282,20 @@ test("事务冲突重放回调后不会残留丢弃尝试的创建结果", async
   assert.equal(fixture.getTransactionAttempts(), 2);
   assert.equal(fixture.getDocuments().size, 1);
   assert.equal(fixture.getDocuments().has(result.data.id), true);
+});
+
+test("所有家庭角色都可更新受控学习状态且旧作业默认无状态", async () => {
+  for (const role of ["creator", "member", "child"]) {
+    const fixture = loadHomeworkFunction({ role, homework: [{
+      _id: "homework-1", familyId: "family-id", semester: "2026下", subject: "数学", title: "练习册", isCompleted: false,
+    }] });
+    const before = await fixture.main({ action: "get", id: "homework-1" });
+    assert.equal(before.data.learningState, "");
+    const updated = await fixture.main({ action: "updateLearningState", id: "homework-1", learningState: "needs_help" });
+    assert.equal(updated.success, true, role);
+    assert.equal(fixture.getDocuments().get("homework-1").learningState, "needs_help", role);
+    assert.equal((await fixture.main({ action: "updateLearningState", id: "homework-1", learningState: "invented" })).success, false);
+  }
 });
 
 test("最近创建排序会包含最新已完成作业且拒绝未知排序模式", async () => {

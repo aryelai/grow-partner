@@ -1,7 +1,8 @@
 const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { HABIT_CATEGORIES } = require("../../utils/constants");
-const { formatDate } = require("../../utils/date");
+const { formatDate, getBeijingDate } = require("../../utils/date");
+const { getWeekRange, createWeeklyReview } = require("../../utils/weekly-review");
 const { canPerform } = require("../../utils/permissions");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 const { GUEST_SEMESTER_LABEL, createGuestHabitItems, requestFamilyAccess } = require("../../utils/guest-experience");
@@ -14,11 +15,12 @@ Page({
 
   data: { categories: [{ value: "all", label: "全部" }, ...HABIT_CATEGORIES], selectedCategory: "all", semester: "2026下", items: [], loading: true, canManage: false, guestMode: false,
     view: "habit", planEntryDate: "", creating: false, submitting: false, loadFailed: false,
+    weeklyReview: null, reviewLoading: false, reviewFailed: false,
     habitTotal: 0, habitDone: 0, longestStreak: 0, habitProgressText: "", planSummary: "日 / 周 / 月计划",
     habitForm: { name: "", category: "behavior", goal: "", targetDays: "21" }, habitCategories: HABIT_CATEGORIES },
   async onShow() {
     const entry = getApp().globalData.growthEntry;
-    if (entry && ["habit", "plan"].includes(entry.view)) {
+    if (entry && ["habit", "plan", "review"].includes(entry.view)) {
       this.setData({ view: entry.view, planEntryDate: entry.date || "" });
       getApp().globalData.growthEntry = null;
     }
@@ -36,6 +38,7 @@ Page({
     this.setData({ semester: session.family.currentSemester, canManage: canPerform(session.user.role, "manageHabit"), guestMode: false });
     await this.load();
     this.refreshPlan();
+    if (this.data.view === "review") await this.loadWeeklyReview();
   },
   enterGuestMode() {
     this.currentUser = null;
@@ -43,6 +46,7 @@ Page({
     this.load();
     this.refreshPlan();
   },
+  requestReviewAccess() { requestFamilyAccess("登录并加入家庭后，可查看真实的每周完成数据。", wx); },
   refreshPlan() {
     const panel = typeof this.selectComponent === "function" && this.selectComponent("#growth-plan");
     if (panel) return panel.refresh();
@@ -56,10 +60,53 @@ Page({
   selectView(event) {
     if (this.data.submitting) return;
     const view = event.currentTarget.dataset.value;
-    if (!["habit", "plan"].includes(view)) return;
+    if (!["habit", "plan", "review"].includes(view)) return;
     this.setData({ view });
+    if (view === "plan") this.refreshPlan();
+    if (view === "review") this.loadWeeklyReview();
   },
-  onPullDownRefresh() { Promise.resolve(this.data.view === "plan" ? this.refreshPlan() : this.load()).finally(() => wx.stopPullDownRefresh()); },
+  onPullDownRefresh() {
+    let request;
+    if (this.data.view === "plan") request = this.refreshPlan();
+    else if (this.data.view === "review") request = this.loadWeeklyReview();
+    else request = this.load();
+    Promise.resolve(request).finally(() => wx.stopPullDownRefresh());
+  },
+  async loadWeeklyReview() {
+    if (this.data.guestMode || this.data.reviewLoading) return;
+    const today = getBeijingDate(new Date());
+    const range = getWeekRange(today);
+    this.setData({ reviewLoading: true, reviewFailed: false });
+    try {
+      const [homework, notices, plans] = await Promise.all([
+        callFunction("homework", "list", { semester: this.data.semester, start: range.start, end: range.end, status: "all", page: 1, pageSize: 50 }),
+        callFunction("notice", "list", { semester: this.data.semester, status: "all", page: 1, pageSize: 50 }),
+        callFunction("plan", "list", { semester: this.data.semester, start: range.start, end: range.end, page: 1, pageSize: 50 }),
+      ]);
+      const weeklyReview = createWeeklyReview({
+        today,
+        homework: homework.items,
+        notices: notices.items,
+        plans: plans.items,
+        habits: this.allHabitItems,
+        incomplete: homework.hasMore === true || homework.truncated === true
+          || notices.hasMore === true || notices.truncated === true || plans.hasMore === true,
+      });
+      this.setData({ weeklyReview });
+    } catch (error) {
+      this.setData({ reviewFailed: true });
+      showError(error, "本周复盘加载失败");
+    } finally {
+      this.setData({ reviewLoading: false });
+    }
+  },
+  openReviewSource(event) {
+    const source = event.currentTarget.dataset.source;
+    if (source === "homework") { wx.switchTab({ url: "/pages/homework-list/homework-list" }); return; }
+    if (source === "notice") { wx.switchTab({ url: "/pages/notice-list/notice-list" }); return; }
+    if (source === "plan") { this.setData({ view: "plan" }); this.refreshPlan(); return; }
+    if (source === "habit") this.setData({ view: "habit" });
+  },
   async load() {
     const version = this.loadVersion = (this.loadVersion || 0) + 1;
     if (this.data.guestMode) {

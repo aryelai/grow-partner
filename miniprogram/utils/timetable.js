@@ -49,12 +49,70 @@ function normalizeTimetableEntries(value) {
   return entries.sort((left, right) => left.dayOfWeek - right.dayOfWeek || left.period - right.period);
 }
 
+function isValidDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function normalizeTimetableOverrides(value) {
+  if (!Array.isArray(value)) return [];
+  const overrides = [];
+  const positions = new Set();
+  for (const candidate of value.slice(0, 180)) {
+    if (!candidate || !isValidDate(candidate.date)
+      || !Number.isSafeInteger(candidate.period) || candidate.period < 1 || candidate.period > 12) continue;
+    const position = `${candidate.date}:${candidate.period}`;
+    if (positions.has(position)) continue;
+    const isCancelled = candidate.isCancelled === true;
+    const courseName = isCancelled ? "" : cleanText(candidate.courseName, 20);
+    if (!isCancelled && !courseName) continue;
+    positions.add(position);
+    overrides.push({
+      date: candidate.date,
+      period: candidate.period,
+      isCancelled,
+      courseName,
+      teacher: isCancelled ? "" : cleanText(candidate.teacher, 20),
+      location: isCancelled ? "" : cleanText(candidate.location, 30),
+      ...(isCancelled ? { startTime: "", endTime: "" } : normalizeTimeRange(candidate)),
+    });
+  }
+  return overrides.sort((left, right) => left.date.localeCompare(right.date) || left.period - right.period);
+}
+
 function createDaySlots(entries, dayOfWeek) {
   const normalized = normalizeTimetableEntries(entries);
   const byPeriod = new Map(normalized.filter((entry) => entry.dayOfWeek === dayOfWeek).map((entry) => [entry.period, entry]));
   return PERIODS.map((period) => {
     const entry = byPeriod.get(period) || null;
     return { period, entry, hasEntry: Boolean(entry) };
+  });
+}
+
+function createDateSlots(entries, overrides, date) {
+  if (!isValidDate(date)) return createDaySlots([], 1);
+  const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay() || 7;
+  const baseSlots = createDaySlots(entries, weekday);
+  const byPeriod = new Map(normalizeTimetableOverrides(overrides)
+    .filter((item) => item.date === date)
+    .map((item) => [item.period, item]));
+  return baseSlots.map((slot) => {
+    const override = byPeriod.get(slot.period) || null;
+    if (!override) return { ...slot, baseEntry: slot.entry, hasOverride: false, isCancelled: false };
+    if (override.isCancelled) {
+      return { ...slot, baseEntry: slot.entry, hasEntry: false, hasOverride: true, isCancelled: true, override };
+    }
+    const entry = {
+      dayOfWeek: weekday,
+      period: override.period,
+      courseName: override.courseName,
+      teacher: override.teacher,
+      location: override.location,
+      startTime: override.startTime,
+      endTime: override.endTime,
+    };
+    return { ...slot, baseEntry: slot.entry, entry, hasEntry: true, hasOverride: true, isCancelled: false, override };
   });
 }
 
@@ -140,7 +198,9 @@ module.exports = {
   WEEKDAYS,
   PERIODS,
   normalizeTimetableEntries,
+  normalizeTimetableOverrides,
   createDaySlots,
+  createDateSlots,
   createEditableTimetableDrafts,
   createTimetableEntriesPayload,
 };

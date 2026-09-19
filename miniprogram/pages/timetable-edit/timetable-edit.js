@@ -2,7 +2,9 @@ const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { DEFAULT_SUBJECTS } = require("../../utils/constants");
 const { canPerform } = require("../../utils/permissions");
-const { WEEKDAYS, normalizeTimetableEntries } = require("../../utils/timetable");
+const { WEEKDAYS, normalizeTimetableEntries, normalizeTimetableOverrides } = require("../../utils/timetable");
+const { formatHomeworkDate } = require("../../utils/date");
+const { validateIsoDate } = require("../../utils/validation");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 function validCoordinate(dayOfWeek, period) {
@@ -18,6 +20,10 @@ Page({
     dayOfWeek: 1,
     dayLabel: "周一",
     period: 1,
+    date: "",
+    dateLabel: "",
+    temporaryMode: false,
+    isCancelled: false,
     subjects: [],
     version: 0,
     exists: false,
@@ -29,14 +35,32 @@ Page({
   },
 
   async onLoad(options = {}) {
-    const dayOfWeek = Number(options.dayOfWeek);
+    const hasDateOption = typeof options.date === "string" && options.date.length > 0;
+    if (hasDateOption && !validateIsoDate(options.date)) {
+      wx.showToast({ title: "临时课程日期不正确", icon: "none" });
+      wx.navigateBack();
+      return;
+    }
+    const date = hasDateOption ? options.date : "";
+    const dayOfWeek = date
+      ? (new Date(`${date}T00:00:00.000Z`).getUTCDay() || 7)
+      : Number(options.dayOfWeek);
     const period = Number(options.period);
     if (!validCoordinate(dayOfWeek, period)) {
       wx.showToast({ title: "课程位置不正确", icon: "none" });
       wx.navigateBack();
       return;
     }
-    this.setData({ dayOfWeek, dayLabel: WEEKDAYS[dayOfWeek - 1].label, period, initializing: true, initializationFailed: false });
+    this.setData({
+      dayOfWeek,
+      dayLabel: WEEKDAYS[dayOfWeek - 1].label,
+      period,
+      date,
+      dateLabel: date ? formatHomeworkDate(date) : "",
+      temporaryMode: Boolean(date),
+      initializing: true,
+      initializationFailed: false,
+    });
     try {
       const session = await this.refreshPermission();
       if (!session) {
@@ -54,7 +78,10 @@ Page({
       ]);
       if (Array.isArray(subjectResult.subjects) && subjectResult.subjects.length) subjects = subjectResult.subjects;
       const entries = normalizeTimetableEntries(timetable.entries);
-      const entry = entries.find((item) => item.dayOfWeek === dayOfWeek && item.period === period);
+      const overrides = normalizeTimetableOverrides(timetable.overrides);
+      const baseEntry = entries.find((item) => item.dayOfWeek === dayOfWeek && item.period === period);
+      const override = date ? overrides.find((item) => item.date === date && item.period === period) : null;
+      const entry = override && !override.isCancelled ? override : baseEntry;
       const form = entry ? {
         courseName: entry.courseName,
         teacher: entry.teacher,
@@ -65,7 +92,8 @@ Page({
       this.setData({
         subjects,
         version: Number.isSafeInteger(timetable.version) && timetable.version >= 0 ? timetable.version : 0,
-        exists: Boolean(entry),
+        exists: date ? Boolean(override) : Boolean(baseEntry),
+        isCancelled: Boolean(override && override.isCancelled),
         form,
         hasTime: Boolean(form.startTime && form.endTime),
       });
@@ -103,21 +131,21 @@ Page({
   },
 
   selectSubject(event) {
-    if (this.isLocked()) return;
+    if (this.isLocked() || this.data.isCancelled) return;
     const courseName = event.currentTarget.dataset.value;
     if (!this.data.subjects.includes(courseName)) return;
     this.setData({ "form.courseName": courseName });
   },
 
   onInput(event) {
-    if (this.isLocked()) return;
+    if (this.isLocked() || this.data.isCancelled) return;
     const field = event.currentTarget.dataset.field;
     if (!["courseName", "teacher", "location"].includes(field)) return;
     this.setData({ [`form.${field}`]: event.detail.value });
   },
 
   toggleTime(event) {
-    if (this.isLocked()) return;
+    if (this.isLocked() || this.data.isCancelled) return;
     const hasTime = event.detail.value === true;
     this.setData({
       hasTime,
@@ -126,8 +154,14 @@ Page({
     });
   },
 
+  toggleCancelled(event) {
+    if (this.isLocked() || !this.data.temporaryMode) return;
+    const isCancelled = event.detail.value === true;
+    this.setData({ isCancelled, hasTime: isCancelled ? false : this.data.hasTime });
+  },
+
   onTime(event) {
-    if (this.isLocked()) return;
+    if (this.isLocked() || this.data.isCancelled) return;
     const field = event.currentTarget.dataset.field;
     if (!["startTime", "endTime"].includes(field)) return;
     this.setData({ [`form.${field}`]: event.detail.value });
@@ -136,7 +170,7 @@ Page({
   async save() {
     if (this.isLocked() || this.saveInProgress) return;
     const courseName = this.data.form.courseName.trim();
-    if (!courseName) {
+    if (!this.data.isCancelled && !courseName) {
       wx.showToast({ title: "请填写科目名称", icon: "none" });
       return;
     }
@@ -153,11 +187,27 @@ Page({
     this.setData({ submitting: true });
     try {
       if (!await this.refreshPermission()) return;
-      await callFunction("timetable", "saveEntry", { expectedVersion: this.data.version, entry });
-      wx.showToast({ title: "课程已保存", icon: "success" });
+      if (this.data.temporaryMode) {
+        await callFunction("timetable", "saveOverride", {
+          expectedVersion: this.data.version,
+          override: {
+            date: this.data.date,
+            period: this.data.period,
+            isCancelled: this.data.isCancelled,
+            courseName: this.data.isCancelled ? "" : entry.courseName,
+            teacher: this.data.isCancelled ? "" : entry.teacher,
+            location: this.data.isCancelled ? "" : entry.location,
+            startTime: this.data.isCancelled ? "" : entry.startTime,
+            endTime: this.data.isCancelled ? "" : entry.endTime,
+          },
+        });
+      } else {
+        await callFunction("timetable", "saveEntry", { expectedVersion: this.data.version, entry });
+      }
+      wx.showToast({ title: this.data.temporaryMode ? "当天安排已保存" : "课程已保存", icon: "success" });
       wx.navigateBack();
     } catch (error) {
-      showError(error, "课程保存失败");
+      showError(error, this.data.temporaryMode ? "当天安排保存失败" : "课程保存失败");
     } finally {
       this.saveInProgress = false;
       this.setData({ submitting: false });
@@ -167,23 +217,29 @@ Page({
   remove() {
     if (this.isLocked() || !this.data.exists) return;
     wx.showModal({
-      title: "删除课程",
-      content: `确认删除${this.data.dayLabel}第 ${this.data.period} 节课程吗？`,
+      title: this.data.temporaryMode ? "恢复每周安排" : "删除课程",
+      content: this.data.temporaryMode
+        ? `确认删除${this.data.dateLabel}第 ${this.data.period} 节的临时调整，恢复每周课程吗？`
+        : `确认删除${this.data.dayLabel}第 ${this.data.period} 节课程吗？`,
       success: async (result) => {
         if (!result.confirm || this.deleteInProgress) return;
         this.deleteInProgress = true;
         this.setData({ submitting: true });
         try {
           if (!await this.refreshPermission()) return;
-          await callFunction("timetable", "removeEntry", {
+          await callFunction("timetable", this.data.temporaryMode ? "removeOverride" : "removeEntry", this.data.temporaryMode ? {
+            expectedVersion: this.data.version,
+            date: this.data.date,
+            period: this.data.period,
+          } : {
             expectedVersion: this.data.version,
             dayOfWeek: this.data.dayOfWeek,
             period: this.data.period,
           });
-          wx.showToast({ title: "课程已删除", icon: "success" });
+          wx.showToast({ title: this.data.temporaryMode ? "已恢复每周课程" : "课程已删除", icon: "success" });
           wx.navigateBack();
         } catch (error) {
-          showError(error, "课程删除失败");
+          showError(error, this.data.temporaryMode ? "恢复每周课程失败" : "课程删除失败");
         } finally {
           this.deleteInProgress = false;
           this.setData({ submitting: false });

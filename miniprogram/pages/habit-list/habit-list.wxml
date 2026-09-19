@@ -5,6 +5,7 @@
     <button class="growth-switch-button {{view === 'habit' ? 'active' : ''}}" data-value="habit" bindtap="selectView" disabled="{{submitting}}" aria-label="习惯打卡，今日{{habitDone}}/{{habitTotal}}已完成"><view class="growth-switch-icon"><view class="ui-icon ui-icon-leaf"></view></view><view class="growth-switch-copy"><view class="growth-switch-title">习惯打卡</view><view class="growth-switch-meta">今日 {{habitDone}}/{{habitTotal}} 已完成</view></view></button>
     <button class="growth-switch-button {{view === 'plan' ? 'active' : ''}}" data-value="plan" bindtap="selectView" disabled="{{submitting}}"><view class="growth-switch-icon"><view class="ui-icon ui-icon-plan"></view></view><view class="growth-switch-copy"><view class="growth-switch-title">计划安排</view><view class="growth-switch-meta">{{planSummary}}</view></view></button>
   </view>
+  <button class="review-entry {{view === 'review' ? 'active' : ''}}" data-value="review" bindtap="selectView" disabled="{{submitting}}"><view><view class="review-entry-title">本周复盘</view><view class="review-entry-note">只看完成进度、逾期和待关注事项</view></view><text class="chevron">›</text></button>
   <view wx:if="{{view === 'habit'}}">
     <view class="habit-toolbar"><text class="panel-title">今日习惯</text><button wx:if="{{canManage || guestMode}}" class="growth-add-button" bindtap="create" disabled="{{submitting}}">＋ 新增习惯</button></view>
     <view wx:if="{{creating}}" class="card habit-form">
@@ -28,4 +29,18 @@
     <view class="loading" wx:if="{{loading}}">加载中…</view>
   </view>
   <view hidden="{{view !== 'plan'}}"><plan-panel id="growth-plan" entry-date="{{planEntryDate}}" bindsummarychange="onPlanSummary"></plan-panel></view>
+  <view wx:if="{{view === 'review'}}" class="weekly-review">
+    <view wx:if="{{guestMode}}" class="empty">登录并加入家庭后，可查看真实的每周完成数据。<button class="ghost-button" bindtap="requestReviewAccess">去登录</button></view>
+    <block wx:elif="{{weeklyReview}}">
+      <view class="review-head"><view><view class="panel-title">本周客观记录</view><view class="review-range">{{weeklyReview.rangeLabel}}</view></view><view class="review-note">不排名，不做主观评价</view></view>
+      <view class="review-warning" wx:if="{{weeklyReview.incomplete}}">本周记录较多，当前仅汇总前50条，请进入对应页面查看完整数据。</view>
+      <button class="review-card" data-source="homework" bindtap="openReviewSource"><view class="review-card-main"><view class="review-card-title">作业</view><view class="review-card-value">{{weeklyReview.homework.done}} / {{weeklyReview.homework.total}}</view><view class="review-card-note">已完成 · {{weeklyReview.homework.percent}}%</view></view><view class="review-card-alerts"><text wx:if="{{weeklyReview.homework.overdue}}">逾期 {{weeklyReview.homework.overdue}}</text><text wx:if="{{weeklyReview.homework.needsAttention}}">待关注 {{weeklyReview.homework.needsAttention}}</text><text wx:if="{{!weeklyReview.homework.overdue && !weeklyReview.homework.needsAttention}}">暂无逾期或待关注</text></view></button>
+      <button class="review-card" data-source="notice" bindtap="openReviewSource"><view class="review-card-main"><view class="review-card-title">通知要求</view><view class="review-card-value">{{weeklyReview.noticeRequirements.done}} / {{weeklyReview.noticeRequirements.total}}</view><view class="review-card-note">已落实 · {{weeklyReview.noticeRequirements.percent}}%</view></view><view class="review-card-alerts"><text>按通知内的要求清单统计</text></view></button>
+      <button class="review-card" data-source="plan" bindtap="openReviewSource"><view class="review-card-main"><view class="review-card-title">计划任务</view><view class="review-card-value">{{weeklyReview.planTasks.done}} / {{weeklyReview.planTasks.total}}</view><view class="review-card-note">已完成 · {{weeklyReview.planTasks.percent}}%</view></view><view class="review-card-alerts"><text>查看本周计划</text></view></button>
+      <button class="review-card" data-source="habit" bindtap="openReviewSource"><view class="review-card-main"><view class="review-card-title">今日习惯</view><view class="review-card-value">{{weeklyReview.habits.doneToday}} / {{weeklyReview.habits.total}}</view><view class="review-card-note">今日已打卡 · {{weeklyReview.habits.percent}}%</view></view><view class="review-card-alerts"><text>最长连续 {{weeklyReview.habits.longestStreak}} 天</text></view></button>
+      <view class="review-caption">统计来自原始作业、通知要求、计划和习惯记录；修改原记录后刷新即可更新。</view>
+    </block>
+    <view class="empty" wx:if="{{reviewFailed}}">本周复盘加载失败<button class="ghost-button" bindtap="loadWeeklyReview">重新加载</button></view>
+    <view class="loading" wx:if="{{reviewLoading}}">正在汇总本周记录…</view>
+  </view>
 </view>

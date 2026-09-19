@@ -54,6 +54,27 @@ test("成长页采用确认原型的摘要切换卡、坚持概览和紧凑习�
   assert.match(template, /新增习惯/);
   assert.doesNotMatch(template, /progress-row|habit-footer|养成每日小习惯/);
   assert.match(template, /bindsummarychange="onPlanSummary"/);
+  assert.match(template, /本周复盘/);
+  assert.match(template, /不排名，不做主观评价/);
+});
+
+test("每周复盘从原业务读取本周数据且不建立重复记录", async () => {
+  const fixture = loadPage("habit-list", async (name, action, payload) => {
+    if (name === "homework") return { items: [{ homeworkDate: "2026-09-14", isCompleted: true }], hasMore: false };
+    if (name === "notice") return { items: [{ requirements: [{ isCompleted: false }] }], hasMore: false };
+    if (name === "plan") return { items: [{ items: [{ isDone: true }] }], hasMore: false };
+    if (name === "habit") return { items: [] };
+    throw new Error(`${name}.${action}.${JSON.stringify(payload)}`);
+  });
+  fixture.page.allHabitItems = [{ completedToday: true, streak: 3 }];
+  fixture.page.setData({ semester: "2026下", guestMode: false });
+  await fixture.page.loadWeeklyReview();
+  assert.equal(fixture.page.data.weeklyReview.noticeRequirements.total, 1);
+  assert.equal(fixture.page.data.weeklyReview.planTasks.done, 1);
+  assert.equal(fixture.calls.length, 3);
+  assert.deepEqual(fixture.calls.map((call) => `${call[0]}.${call[1]}`), ["homework.list", "notice.list", "plan.list"]);
+  assert.equal(fixture.calls[0][2].start.length, 10);
+  assert.equal(fixture.calls[0][2].end.length, 10);
 });
 
 test("习惯分类只筛选列表而不改变全体习惯的今日摘要", async () => {
@@ -102,12 +123,14 @@ test("我的默认仅显示服务入口且设置面板互斥展开", () => {
 test("我的保留家庭邀请码和当前学期并采用原型服务列表", () => {
   const template = read("miniprogram/pages/settings/settings.wxml");
   for (const name of ["list-page-head", "role-chip", "family-row", "feature-grid", "settings-group", "settings-item"]) assert.match(template, new RegExp(name));
-  for (const title of ["家庭邀请码", "当前学期", "学习管理", "服务与偏好", "通知与提醒", "AI 能力", "通用设置", "隐私与关于"]) assert.match(template, new RegExp(title));
+  for (const title of ["家庭邀请码", "当前学期", "学习管理", "服务与偏好", "通知与提醒", "图片识别服务", "通用设置", "家庭数据管理", "隐私与关于"]) assert.match(template, new RegExp(title));
   assert.match(template, /bindtap="copyInviteCode"/);
   assert.match(template, /bindtap="changeSemester"/);
   assert.match(template, /wx:if="\{\{expandedSection === 'reminder'\}\}"/);
   assert.match(template, /wx:if="\{\{expandedSection === 'ai'\}\}"/);
   assert.match(template, /bindtap="openPrivacyContract"/);
+  assert.match(template, /bindtap="exportFamilyData"/);
+  assert.match(template, /bindtap="leaveFamily"/);
 });
 
 test("我的全部计划入口切换到成长内的计划而非旧独立页", () => {

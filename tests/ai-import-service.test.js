@@ -77,6 +77,13 @@ function createFixture(options = {}) {
           : { data: [] };
       } }; } }; },
     };
+    if (name === "settings") return {
+      where(query) { return { limit() { return { async get() {
+        return query.familyId === "family-1" && Array.isArray(options.recognitionGlossary)
+          ? { data: [{ _id: "settings-1", familyId: "family-1", recognitionGlossary: options.recognitionGlossary }] }
+          : { data: [] };
+      } }; } }; },
+    };
     if (name === "ai_import_jobs") return { doc(id) { return {
       async get() {
         if (!storage.has(id)) throw documentMissing();
@@ -227,7 +234,7 @@ test("配置缺失时关闭状态并在创建凭据前拒绝", async () => {
     canImport: false,
     maxImages: 3,
     maxImageBytes: 4194304,
-    blockedReason: "AI 图片导入尚未配置",
+    blockedReason: "图片识别导入尚未配置",
   });
   await assert.rejects(fixture.service.createImportJob(testUser.openid, { files: fileInput() }), { message: "CONFIGURATION" });
   assert.equal(fixture.getMetadataCalls().length, 0);
@@ -310,6 +317,7 @@ test("通知任务绑定业务类型且分析阶段不能由客户端改写为�
         source: "班主任",
         category: "activity",
         content: "请提前十分钟到场",
+        requirements: ["携带纸笔", "提交家长回执"],
         eventTimeExplicit: true,
         eventTime: "2026-09-21T19:00:00+08:00",
         uncertainFields: [],
@@ -338,6 +346,8 @@ test("通知任务绑定业务类型且分析阶段不能由客户端改写为�
   assert.equal(result.drafts[0].title, "下周一家长会");
   assert.equal(result.drafts[0].subject, undefined);
   assert.equal(result.drafts[0].suggestedRemindTime, "2026-09-21T11:00:00.000Z");
+  assert.deepEqual(result.drafts[0].requirements, ["携带纸笔", "提交家长回执"]);
+  assert.match(prompt, /requirements/);
 });
 
 test("课程表任务使用课程表提示词和服务端课程格规范化", async () => {
@@ -498,6 +508,19 @@ test("AI 上下文仅向模型提供清洗去重后的前五十个科目", async
   assert.match(prompt, /语文、科目0/);
   assert.match(prompt, /科目48/);
   assert.doesNotMatch(prompt, /科目49/);
+});
+
+test("家庭识别词库作为只读辨认提示传入模型", async () => {
+  let modelInput;
+  const fixture = createFixture({
+    recognitionGlossary: [{ term: "小单行本", hint: "一种语文作业本" }],
+    onGenerate: (input) => { modelInput = input; },
+  });
+  const created = await fixture.service.createImportJob(testUser.openid, { files: fileInput() });
+  await fixture.service.analyzeImportJob(testUser.openid, { jobId: created.jobId });
+  const prompt = modelInput.messages[0].content.find((item) => item.type === "text").text;
+  assert.match(prompt, /小单行本→一种语文作业本/);
+  assert.match(prompt, /不能补写图片中没有的内容/);
 });
 
 test("成功识别时校验图片、调用托管模型、规范化草稿并删除临时文件", async () => {

@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function loadSettingsFunction({ role, currentSettings, currentSubjects = null }) {
+function loadSettingsFunction({ role, currentSettings, currentSubjects = null, exportRecords = {} }) {
   const sourcePath = path.join(__dirname, "../cloudfunctions/settings/index.js");
   const source = fs.readFileSync(sourcePath, "utf8");
   const user = {
@@ -53,6 +53,22 @@ function loadSettingsFunction({ role, currentSettings, currentSubjects = null })
             return { async update({ data }) { updatedSubjects = data; } };
           },
           async add({ data }) { updatedSubjects = data; },
+        };
+      }
+      if (Object.hasOwn(exportRecords, name)) {
+        return {
+          where(query) {
+            const items = exportRecords[name].filter((item) => item.familyId === query.familyId);
+            let offset = 0;
+            let limit = items.length;
+            const chain = {
+              async count() { return { total: items.length }; },
+              skip(value) { offset = value; return chain; },
+              limit(value) { limit = value; return chain; },
+              async get() { return { data: items.slice(offset, offset + limit) }; },
+            };
+            return chain;
+          },
         };
       }
       throw new Error(`测试未实现集合：${name}`);
@@ -206,6 +222,67 @@ test("读取历史家庭设置时默认提醒始终是一个有效值", async ()
 
   assert.equal(result.success, true);
   assert.deepEqual([...result.data.settings.reminderDefaultAdvance], [120]);
+});
+
+test("家庭识别词库仅保存有效且不重复的人工提示", async () => {
+  const fixture = loadSettingsFunction({ role: "creator", currentSettings: null });
+  const result = await fixture.main({
+    action: "updatePreferences",
+    reminderDefaultAdvance: [120],
+    reminderTargets: ["father"],
+    recognitionGlossary: [
+      { term: "小单行本", hint: "语文作业本" },
+      { term: "中考语文", hint: "教材名称" },
+    ],
+  });
+
+  assert.equal(result.success, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(fixture.getUpdatedSettings().recognitionGlossary)), [
+    { term: "小单行本", hint: "语文作业本" },
+    { term: "中考语文", hint: "教材名称" },
+  ]);
+});
+
+test("家庭识别词库拒绝重复词条和超长内容", async () => {
+  for (const recognitionGlossary of [
+    [{ term: "卷", hint: "试卷" }, { term: "卷", hint: "重复" }],
+    [{ term: "词".repeat(21), hint: "说明" }],
+    Array.from({ length: 31 }, (_, index) => ({ term: `词${index}`, hint: "说明" })),
+  ]) {
+    const fixture = loadSettingsFunction({ role: "creator", currentSettings: null });
+    const result = await fixture.main({
+      action: "updatePreferences",
+      reminderDefaultAdvance: [120],
+      reminderTargets: ["father"],
+      recognitionGlossary,
+    });
+    assert.equal(result.success, false);
+    assert.equal(fixture.getUpdatedSettings(), null);
+  }
+});
+
+test("家庭数据导出仅限创建者且移除内部身份和连接字段", async () => {
+  const record = {
+    _id: "homework-id",
+    familyId: "family-id",
+    title: "数学练习",
+    createdBy: "sensitive-openid",
+    checkedByOpenid: "another-openid",
+    nested: { token: "secret-token", visible: "保留" },
+  };
+  const creator = loadSettingsFunction({ role: "creator", currentSettings: null, exportRecords: { homework: [record] } });
+  const result = await creator.main({ action: "exportDataPage", dataset: "homework", offset: 0 });
+  assert.equal(result.success, true);
+  assert.equal(result.data.items[0].title, "数学练习");
+  assert.equal(result.data.items[0].nested.visible, "保留");
+  assert.equal(Object.hasOwn(result.data.items[0], "createdBy"), false);
+  assert.equal(Object.hasOwn(result.data.items[0], "checkedByOpenid"), false);
+  assert.equal(Object.hasOwn(result.data.items[0].nested, "token"), false);
+
+  const member = loadSettingsFunction({ role: "member", currentSettings: null, exportRecords: { homework: [record] } });
+  const denied = await member.main({ action: "exportDataPage", dataset: "homework", offset: 0 });
+  assert.equal(denied.success, false);
+  assert.match(denied.message, /家庭创建者/);
 });
 
 test("家庭创建者可以重命名默认科目且不修改默认模板", async () => {

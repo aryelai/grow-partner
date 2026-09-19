@@ -18,7 +18,7 @@ function shiftPlanDate(value, type, offset) {
 function createPlanData() {
   return { types: PLAN_TYPES, type: "daily", anchorDate: formatDate(new Date()), rangeLabel: "", semester: "2026下",
     items: [], completionRate: 0, totalTasks: 0, doneTasks: 0, loading: true, loadFailed: false,
-    canManage: false, guestMode: false, toggleBusy: false, isCurrentPeriod: true };
+    canManage: false, canCreate: false, guestMode: false, toggleBusy: false, isCurrentPeriod: true };
 }
 
 function progressData(items) {
@@ -34,7 +34,7 @@ function createPlanController({ requireFamily, callFunction, showError, wxApi })
         const session = await requireFamily({ redirect: false });
         if (!session) return this.enterGuestMode();
         this.currentUser = session.user;
-        this.setData({ semester: session.family.currentSemester, canManage: canPerform(session.user.role, "managePlan"), guestMode: false });
+        this.setData({ semester: session.family.currentSemester, canManage: canPerform(session.user.role, "managePlan"), canCreate: canPerform(session.user.role, "createOwnPlan"), guestMode: false });
         return this.load();
       } catch (error) {
         this.enterGuestMode();
@@ -43,7 +43,7 @@ function createPlanController({ requireFamily, callFunction, showError, wxApi })
     },
     enterGuestMode() {
       this.currentUser = null;
-      this.setData({ semester: GUEST_SEMESTER_LABEL, canManage: false, guestMode: true });
+      this.setData({ semester: GUEST_SEMESTER_LABEL, canManage: false, canCreate: false, guestMode: true });
       return this.load();
     },
     async load() {
@@ -62,7 +62,7 @@ function createPlanController({ requireFamily, callFunction, showError, wxApi })
       try {
         const result = await callFunction("plan", "list", { type: this.data.type, semester: this.data.semester, start: range.start, end: range.end, page: 1, pageSize: 50 });
         if (version !== this.loadVersion) return;
-        const items = result.items.map((plan) => ({ ...plan, items: Array.isArray(plan.items) ? plan.items : [] }));
+        const items = result.items.map((plan) => ({ ...plan, canEdit: plan.canEdit === true || this.data.canManage, items: Array.isArray(plan.items) ? plan.items : [] }));
         this.setData(progressData(items));
       } catch (error) {
         if (version !== this.loadVersion) return;
@@ -85,14 +85,14 @@ function createPlanController({ requireFamily, callFunction, showError, wxApi })
     goToday() { if (this.data.toggleBusy) return; this.setData({ type: "daily", anchorDate: formatDate(new Date()) }); return this.load(); },
     create() {
       if (this.data.guestMode) { requestFamilyAccess("登录后可创建计划并同步家庭执行进度。", wxApi); return; }
-      if (!canPerform(this.currentUser && this.currentUser.role, "managePlan")) return;
+      if (!canPerform(this.currentUser && this.currentUser.role, "createOwnPlan")) return;
       wxApi.navigateTo({ url: `/pages/plan-edit/plan-edit?type=${this.data.type}&date=${this.data.anchorDate}` });
     },
     edit(event) {
       const item = this.data.items.find((plan) => plan._id === event.currentTarget.dataset.id);
       if (!item) return;
       if (this.data.guestMode) { wxApi.showModal({ title: item.title, content: "这是演示计划，登录后可新增和编辑。", showCancel: false, confirmText: "知道了" }); return; }
-      if (!canPerform(this.currentUser && this.currentUser.role, "managePlan")) return;
+      if (!item.canEdit) return;
       wxApi.navigateTo({ url: `/pages/plan-edit/plan-edit?id=${item._id}` });
     },
     toggleTask(event) {

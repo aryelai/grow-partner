@@ -6,6 +6,8 @@ const {
   PERIODS,
   normalizeTimetableEntries,
   createDaySlots,
+  normalizeTimetableOverrides,
+  createDateSlots,
   createEditableTimetableDrafts,
   createTimetableEntriesPayload,
 } = require("../miniprogram/utils/timetable");
@@ -31,6 +33,25 @@ test("课程表客户端忽略畸形和重复服务端记录", () => {
   assert.equal(entries.length, 1);
   assert.equal(entries[0].courseName, "语文");
   assert.equal(entries[0].startTime, "");
+});
+
+test("指定日期课程用临时调课覆盖周课程并清楚标识停课", () => {
+  const entries = [
+    { dayOfWeek: 5, period: 1, courseName: "语文" },
+    { dayOfWeek: 5, period: 2, courseName: "数学" },
+  ];
+  const overrides = normalizeTimetableOverrides([
+    { date: "2026-09-18", period: 1, isCancelled: false, courseName: "班会" },
+    { date: "2026-09-18", period: 2, isCancelled: true },
+    { date: "bad", period: 3, isCancelled: true },
+  ]);
+  const slots = createDateSlots(entries, overrides, "2026-09-18");
+  assert.equal(slots[0].entry.courseName, "班会");
+  assert.equal(slots[0].hasOverride, true);
+  assert.equal(slots[1].entry.courseName, "数学");
+  assert.equal(slots[1].isCancelled, true);
+  assert.equal(slots[1].hasEntry, false);
+  assert.equal(slots[2].hasEntry, false);
 });
 
 test("课程表 AI 草稿标记既有课程冲突并生成安全批量载荷", () => {

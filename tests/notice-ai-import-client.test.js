@@ -49,6 +49,7 @@ test("通知草稿传入编辑页时只保留通知白名单字段", () => {
     source: "年级组",
     category: "exam",
     content: "周三考试",
+    requirements: [],
     suggestedRemindTime: "2026-09-23T00:00:00.000Z",
     familyId: "forged-family",
   }], "2026下", TEST_JOB_ID);
@@ -61,6 +62,7 @@ test("通知草稿传入编辑页时只保留通知白名单字段", () => {
     source: "年级组",
     category: "exam",
     content: "周三考试",
+    requirements: [],
     suggestedRemindTime: "2026-09-23T00:00:00.000Z",
   });
   assert.equal(transfer.familyId, undefined);
@@ -114,6 +116,7 @@ test("通知批量保存载荷只包含白名单字段并带幂等编号", () =>
     source: "班主任",
     category: "activity",
     content: "周五召开",
+    requirements: [],
     images: [],
     remindTime: null,
     remindAdvance: [120],

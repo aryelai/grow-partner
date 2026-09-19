@@ -3,6 +3,8 @@ const {
   buildTimetableId,
   normalizeEntry,
   normalizeEntries,
+  normalizeOverride,
+  normalizeOverrides,
   validateExpectedVersion,
   mergeTimetableEntries,
 } = require("./core");
@@ -53,6 +55,7 @@ function createTimetableService(dependencies) {
       semester,
       version: document ? document.version : 0,
       entries: document ? normalizeEntries(document.entries) : [],
+      overrides: document ? normalizeOverrides(document.overrides || []) : [],
     };
   }
 
@@ -72,19 +75,23 @@ function createTimetableService(dependencies) {
       const current = await readDocument(transaction, id);
       const currentValue = publicValue(current, semester);
       if (currentValue.version !== expectedVersion) throw new Error("VERSION_CONFLICT");
-      const result = transform(currentValue.entries);
+      const result = transform(currentValue.entries, currentValue.overrides);
       const entries = normalizeEntries(result.entries);
+      const overrides = result.overrides === undefined
+        ? currentValue.overrides
+        : normalizeOverrides(result.overrides);
       const version = currentValue.version + 1;
       await transaction.collection("timetables").doc(id).set({ data: {
         familyId: user.familyId,
         semester,
         version,
         entries,
+        overrides,
         createdAt: current && current.createdAt || timestamp,
         updatedAt: timestamp,
         updatedBy: user.openid,
       } });
-      return { semester, version, entries, ...result.metadata };
+      return { semester, version, entries, overrides, ...result.metadata };
     });
   }
 
@@ -120,7 +127,23 @@ function createTimetableService(dependencies) {
     });
   }
 
-  return { get, saveEntry, removeEntry, mergeEntries };
+  async function saveOverride(openid, input = {}) {
+    const override = normalizeOverride(input.override);
+    return update(openid, input, (entries, currentOverrides) => ({
+      entries,
+      overrides: [...currentOverrides.filter((item) => item.date !== override.date || item.period !== override.period), override],
+    }));
+  }
+
+  async function removeOverride(openid, input = {}) {
+    const coordinate = normalizeOverride({ date: input.date, period: input.period, isCancelled: true });
+    return update(openid, input, (entries, currentOverrides) => ({
+      entries,
+      overrides: currentOverrides.filter((item) => item.date !== coordinate.date || item.period !== coordinate.period),
+    }));
+  }
+
+  return { get, saveEntry, removeEntry, mergeEntries, saveOverride, removeOverride };
 }
 
 function success(data, message = "") {
@@ -138,11 +161,15 @@ const ERROR_MESSAGES = {
   INVALID_SEMESTER: "课程表学期不正确",
   INVALID_ENTRY: "课程信息不完整",
   INVALID_ENTRIES: "请选择至少一个有效课程格",
+  INVALID_OVERRIDE: "临时课程信息不完整",
+  INVALID_OVERRIDES: "临时课程数据不正确",
+  INVALID_OVERRIDE_DATE: "临时课程日期不正确",
   INVALID_DAY: "星期不正确，请重新选择",
   INVALID_PERIOD: "节次不正确，请重新选择",
   INVALID_COURSE_NAME: "请填写科目名称",
   INVALID_TIME_RANGE: "上课时间范围不正确",
   DUPLICATE_ENTRY: "同一星期和节次只能有一门课程",
+  DUPLICATE_OVERRIDE: "同一天同一节只能有一条临时安排",
   INVALID_VERSION: "课程表版本不正确，请重新加载",
   INVALID_DOCUMENT: "课程表数据异常，请联系管理员检查",
   VERSION_CONFLICT: "课程表已被家庭成员更新，请重新加载后再保存",
@@ -162,6 +189,8 @@ exports.main = async (event = {}) => {
       case "saveEntry": return success(await service.saveEntry(OPENID, event), "课程已保存");
       case "removeEntry": return success(await service.removeEntry(OPENID, event), "课程已删除");
       case "mergeEntries": return success(await service.mergeEntries(OPENID, event), "课程表已更新");
+      case "saveOverride": return success(await service.saveOverride(OPENID, event), "临时课程已保存");
+      case "removeOverride": return success(await service.removeOverride(OPENID, event), "已恢复每周课程安排");
       default: return failure("不支持的操作");
     }
   } catch (error) {

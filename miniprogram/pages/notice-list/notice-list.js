@@ -1,7 +1,7 @@
 const { callFunction, showError } = require("../../utils/api");
 const { requireFamily } = require("../../utils/session");
 const { NOTICE_CATEGORIES } = require("../../utils/constants");
-const { decorateNotice } = require("../../utils/notice");
+const { decorateNotice, sortNotices } = require("../../utils/notice");
 const { createListCompletion } = require("../../utils/list-completion");
 const { canPerform } = require("../../utils/permissions");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
@@ -30,18 +30,18 @@ Page({
     if (!session) { this.enterGuestMode(); return; }
     this.currentUser = session.user;
     const canUseImport = canPerform(session.user.role, "importNotice");
-    this.setData({ semester: session.family.currentSemester, canManage: canPerform(session.user.role, "manageNotice"), canUseImport, canImport: false, importBlockedReason: canUseImport ? "正在检查 AI 导入状态" : "", guestMode: false });
+    this.setData({ semester: session.family.currentSemester, canManage: canPerform(session.user.role, "manageNotice"), canUseImport, canImport: false, importBlockedReason: canUseImport ? "正在检查智能导入服务" : "", guestMode: false });
     const noticeLoad = this.load(true);
     let canImport = false;
-    let importBlockedReason = "AI 通知导入暂不可用";
+    let importBlockedReason = "通知智能导入暂不可用";
     if (canUseImport) {
       try {
         const aiStatus = await callFunction("ai", "getStatus");
         canImport = aiStatus.enabled === true && aiStatus.canImport === true;
         importBlockedReason = canImport ? "" : aiStatus.blockedReason || importBlockedReason;
       } catch (error) {
-        importBlockedReason = "AI 通知导入状态加载失败，请稍后重试";
-        console.error("Load notice AI import status failed", { message: error.message });
+        importBlockedReason = "通知智能导入状态加载失败，请稍后重试";
+        console.error("Load notice image import status failed", { message: error.message });
       }
     }
     this.setData({ canImport, importBlockedReason });
@@ -58,7 +58,7 @@ Page({
     if (this.data.loading && !reset) return;
     const version = this.loadVersion = (this.loadVersion || 0) + 1;
     if (this.data.guestMode) {
-      const items = createGuestNoticeItems({ category: this.data.category, status: this.data.status, keyword: this.data.keyword }).map(decorateNotice);
+      const items = sortNotices(createGuestNoticeItems({ category: this.data.category, status: this.data.status, keyword: this.data.keyword }).map(decorateNotice));
       this.setData({ items, total: items.length, page: 1, hasMore: false, loading: false, loadFailed: false });
       return;
     }
@@ -68,7 +68,7 @@ Page({
       const data = await callFunction("notice", "list", { semester: this.data.semester, category: this.data.category, status: this.data.status, keyword: this.data.keyword, page, pageSize: 20 });
       if (version !== this.loadVersion) return;
       const items = data.items.map(decorateNotice);
-      this.setData({ items: reset ? items : [...this.data.items, ...items], total: data.total, page, hasMore: data.hasMore });
+      this.setData({ items: sortNotices(reset ? items : [...this.data.items, ...items]), total: data.total, page, hasMore: data.hasMore });
     } catch (error) {
       if (version !== this.loadVersion) return;
       this.setData({ loadFailed: true });
@@ -84,13 +84,13 @@ Page({
     wx.navigateTo({ url: "/pages/notice-edit/notice-edit" });
   },
   importNotice() {
-    if (this.data.guestMode) { requestFamilyAccess("登录后可使用 AI 识别截图并生成通知草稿。", wx); return; }
+    if (this.data.guestMode) { requestFamilyAccess("登录后可识别通知截图并整理为可编辑草稿。", wx); return; }
     if (!canPerform(this.currentUser && this.currentUser.role, "importNotice")) {
-      wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
+      wx.showToast({ title: "孩子账号不能使用智能导入", icon: "none" });
       return;
     }
     if (!this.data.canImport) {
-      wx.showModal({ title: "AI 导入暂不可用", content: this.data.importBlockedReason || "请稍后重试", showCancel: false });
+      wx.showModal({ title: "智能导入暂不可用", content: this.data.importBlockedReason || "请稍后重试", showCancel: false });
       return;
     }
     wx.navigateTo({ url: "/pages/notice-import/notice-import" });

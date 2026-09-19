@@ -1,8 +1,12 @@
 <view class="page tab-page homework-page {{undoId ? 'has-feedback' : ''}}">
   <guest-banner wx:if="{{guestMode}}" />
-  <view class="list-toolbar"><text class="list-toolbar-title">作业</text><view class="list-toolbar-actions"><button wx:if="{{canUseImport || guestMode}}" class="toolbar-button {{canImport || guestMode ? '' : 'unavailable'}}" bindtap="importHomework">AI 导入</button><button wx:if="{{canManage || guestMode}}" class="toolbar-button primary" bindtap="createHomework">＋ 新增</button><button class="toolbar-button more" bindtap="showMore" aria-label="更多作业操作"><view class="more-dots"><view class="more-dot" /><view class="more-dot" /><view class="more-dot" /></view></button></view></view>
+  <view class="list-toolbar"><text class="list-toolbar-title">作业</text><view class="list-toolbar-actions"><button wx:if="{{canUseImport || guestMode}}" class="toolbar-button {{canImport || guestMode ? '' : 'unavailable'}}" bindtap="importHomework">智能导入</button><button wx:if="{{canManage || guestMode}}" class="toolbar-button primary" bindtap="createHomework">＋ 新增</button><button class="toolbar-button more" bindtap="showMore" aria-label="更多作业操作"><view class="more-dots"><view class="more-dot" /><view class="more-dot" /><view class="more-dot" /></view></button></view></view>
   <view class="filter-panel">
-    <view class="date-switcher">
+    <view class="scope-row">
+      <view class="scope-item {{scope === 'date' ? 'active' : ''}}" data-value="date" bindtap="selectScope">指定日期</view>
+      <view class="scope-item {{scope === 'pending' ? 'active' : ''}}" data-value="pending" bindtap="selectScope">全部待办</view>
+    </view>
+    <view class="date-switcher" wx:if="{{scope === 'date'}}">
       <button class="date-arrow" data-offset="-1" bindtap="changeDate" aria-label="查看前一天作业">‹</button>
       <button class="date-picker" bindtap="openCalendar" aria-label="选择作业日期">
         <view class="date-current">
@@ -18,7 +22,7 @@
         <view wx:for="{{subjects}}" wx:key="*this" class="tag {{selectedSubject === item ? 'active' : ''}}" data-value="{{item}}" bindtap="selectSubject">{{item}}</view>
       </view>
     </scroll-view>
-    <view class="status-row">
+    <view class="status-row" wx:if="{{scope === 'date'}}">
       <view wx:for="{{statuses}}" wx:key="value" class="status-item {{status === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectStatus">{{item.label}}</view>
     </view>
     <view class="search-box">⌕<input class="search-input" placeholder="搜索作业主题" value="{{keyword}}" bindinput="onSearchInput" /></view>
@@ -40,6 +44,10 @@
       <view wx:if="{{homework.hasDeadline}}" class="deadline-meta {{homework.isOverdue ? 'overdue' : ''}}">截止：{{homework.deadlineText}}</view>
       <view class="meta">录入：{{homework.createdByName}}</view>
       <view class="tags" wx:if="{{homework.extraTags.length}}"><text class="small-tag" wx:for="{{homework.extraTags}}" wx:for-item="tagItem" wx:key="*this">{{tagItem}}</text></view>
+      <view class="learning-state-row">
+        <text class="learning-state {{homework.learningState || 'empty'}}">{{homework.learningState ? homework.learningStateText : '未标记学习状态'}}</text>
+        <button class="learning-state-button" disabled="{{learningStateBusy || loading}}" data-id="{{homework._id}}" catchtap="changeLearningState">{{homework.learningState ? '修改状态' : '标记状态'}}</button>
+      </view>
       <view class="media-row" wx:if="{{homework.images.length || homework.videos.length || homework.links.length}}">
         <image class="thumb" wx:for="{{homework.images}}" wx:for-item="imageUrl" wx:key="*this" src="{{imageUrl}}" mode="aspectFill" data-url="{{imageUrl}}" data-urls="{{homework.images}}" catchtap="previewImage" />
         <text class="media-badge" wx:if="{{homework.videos.length}}">视频 1</text>
@@ -51,7 +59,7 @@
       </view>
     </view>
     <view class="empty" wx:if="{{loadFailed}}">作业加载失败<button class="ghost-button" bindtap="retryLoad">重新加载</button></view>
-    <view class="empty" wx:if="{{!loading && !loadFailed && !items.length}}">{{selectedDateText}}暂无符合条件的作业</view>
+    <view class="empty" wx:if="{{!loading && !loadFailed && !items.length}}">{{scope === 'pending' ? '暂无未完成作业' : selectedDateText + '暂无符合条件的作业'}}</view>
     <view class="load-more" wx:if="{{loading}}">加载中…</view>
     <view class="load-more" wx:if="{{!loading && items.length && !hasMore}}">已加载全部</view>
   </view>

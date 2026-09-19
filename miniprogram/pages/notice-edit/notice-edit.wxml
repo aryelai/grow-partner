@@ -1,7 +1,7 @@
 <view class="page">
   <view class="ai-draft-note" wx:if="{{aiDraftRequestId}}">
-    <view class="ai-draft-title">AI 通知草稿</view>
-    <view class="ai-draft-detail">请核对标题、来源、分类和正文后再保存。AI 不会自动开启提醒。</view>
+    <view class="ai-draft-title">通知识别草稿</view>
+    <view class="ai-draft-detail">请核对标题、来源、分类和正文后再保存。系统不会自动开启提醒。</view>
     <view class="ai-time-row" wx:if="{{aiSuggestedRemindTime}}"><view><view class="ai-time-label">识别到时间建议</view><view class="ai-time-value">{{aiSuggestedRemindTimeText}}</view></view><button class="ghost-button ai-time-button" bindtap="useAiSuggestion" disabled="{{submitting || initializing || initializationFailed}}">采用时间</button></view>
   </view>
   <view class="card">
@@ -9,6 +9,14 @@
     <view class="field"><text class="field-label">来源</text><input class="input" maxlength="60" value="{{form.source}}" data-field="source" bindinput="onInput" placeholder="例如：班主任-王老师" disabled="{{submitting || initializing || initializationFailed}}" /></view>
     <view class="field"><text class="field-label">分类</text><view class="tag-group"><text wx:for="{{categories}}" wx:key="value" class="tag {{form.category === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectCategory">{{item.label}}</text></view></view>
     <view class="field"><text class="field-label">内容</text><textarea class="textarea" maxlength="3000" value="{{form.content}}" data-field="content" bindinput="onInput" disabled="{{submitting || initializing || initializationFailed}}" /></view>
+    <view class="field requirements-editor">
+      <view class="requirements-editor-head"><view><view class="field-label">内部要求清单</view><view class="muted requirement-help">把需要落实的事项逐条列出，便于完成后分别勾选。</view></view><button class="ghost-button add-requirement" disabled="{{submitting || initializing || initializationFailed || form.requirements.length >= 20}}" bindtap="addRequirement">＋ 添加</button></view>
+      <view class="requirement-edit-row" wx:for="{{form.requirements}}" wx:key="id">
+        <text class="requirement-index">{{index + 1}}</text>
+        <input class="input requirement-input" maxlength="200" value="{{item.text}}" data-index="{{index}}" bindinput="onRequirementInput" placeholder="例如：周五前提交回执" disabled="{{submitting || initializing || initializationFailed}}" />
+        <button class="requirement-remove" data-index="{{index}}" bindtap="removeRequirement" disabled="{{submitting || initializing || initializationFailed}}" aria-label="删除第 {{index + 1}} 项要求">×</button>
+      </view>
+    </view>
     <view class="muted">家庭内测期间暂不支持新增附件，已有图片仍可查看。</view>
     <view class="image-grid"><view class="image-wrap" wx:for="{{form.images}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /><text wx:if="{{!submitting}}" data-index="{{index}}" bindtap="removeImage">×</text></view></view>
   </view>

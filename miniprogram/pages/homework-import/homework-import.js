@@ -62,7 +62,7 @@ Page({
     }
     this.currentUser = session.user;
     if (!canPerform(session.user.role, "importHomework")) {
-      wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
+      wx.showToast({ title: "孩子账号不能使用智能导入", icon: "none" });
       wx.navigateBack();
       return null;
     }
@@ -83,7 +83,7 @@ Page({
       const subjectData = await callFunction("settings", "getSubjects");
       if (Array.isArray(subjectData.subjects) && subjectData.subjects.length) subjects = subjectData.subjects;
     } catch (error) {
-      console.error("Load AI import subjects failed", { message: error.message });
+      console.error("Load image import subjects failed", { message: error.message });
     }
 
     try {
@@ -94,7 +94,7 @@ Page({
         semester: session.family.currentSemester,
         subjects,
         enabled,
-        blockedReason: enabled ? "" : status.blockedReason || "AI 作业导入暂不可用",
+        blockedReason: enabled ? "" : status.blockedReason || "作业智能导入暂不可用",
       });
     } catch (error) {
       if (this.pageDestroyed) return;
@@ -102,9 +102,9 @@ Page({
         semester: session.family.currentSemester,
         subjects,
         enabled: false,
-        blockedReason: "AI 作业导入状态加载失败，请稍后重试",
+        blockedReason: "作业智能导入状态加载失败，请稍后重试",
       });
-      console.error("Load AI import status failed", { message: error.message });
+      console.error("Load image import status failed", { message: error.message });
     }
   },
 
@@ -121,11 +121,11 @@ Page({
 
   async chooseScreenshots() {
     if (!canPerform(this.currentUser && this.currentUser.role, "importHomework")) {
-      wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
+      wx.showToast({ title: "孩子账号不能使用智能导入", icon: "none" });
       return;
     }
     if (!this.data.enabled) {
-      wx.showToast({ title: this.data.blockedReason || "AI 作业导入暂不可用", icon: "none" });
+      wx.showToast({ title: this.data.blockedReason || "作业智能导入暂不可用", icon: "none" });
       return;
     }
     if (this.data.processing || this.data.saving || this.data.editingImage) return;
@@ -189,7 +189,7 @@ Page({
       const session = await this.refreshPermission();
       if (!session || this.pageDestroyed) return;
       if (!this.data.enabled) {
-        wx.showToast({ title: this.data.blockedReason || "AI 作业导入暂不可用", icon: "none" });
+        wx.showToast({ title: this.data.blockedReason || "作业智能导入暂不可用", icon: "none" });
         return;
       }
 
@@ -226,7 +226,7 @@ Page({
         if (this.pageDestroyed) return;
       }
 
-      this.setData({ phase: "analyzing", progressText: "AI 正在识别并拆分作业，请稍候…" });
+      this.setData({ phase: "analyzing", progressText: "正在识别并整理作业，请稍候…" });
       const result = await callFunction("ai", "analyzeImportJob", { jobId });
       if (this.activeJobId === jobId) this.activeJobId = "";
       if (this.pageDestroyed) return;
@@ -239,7 +239,7 @@ Page({
         (input) => callFunction("homework", "list", input),
       );
       if (duplicateResult.error) {
-        console.error("Check AI import duplicates failed", { message: duplicateResult.error.message });
+        console.error("Check image import duplicates failed", { message: duplicateResult.error.message });
       }
       if (this.pageDestroyed) return;
       const warnings = Array.isArray(result.warnings)
@@ -258,7 +258,6 @@ Page({
         }
         : { sourceType: "unknown", sourceTypeLabel: "未知版式", scopeLabel: "自动判断", weekLabel: "" };
       this.setData({
-        selectedFiles: [],
         drafts: duplicateResult.drafts,
         warnings,
         summary,
@@ -270,13 +269,19 @@ Page({
       if (!this.pageDestroyed) {
         await this.cancelActiveJob(jobId);
         this.setData({ phase: "selected", progressText: "识别未完成，可重新发起本次导入" });
-        showError(error, "AI 作业识别失败");
+        showError(error, "作业图片识别失败");
       }
     } finally {
       this.recognizeInProgress = false;
       this.uploadRequestTask = null;
       if (!this.pageDestroyed) this.setData({ processing: false });
     }
+  },
+
+  previewSourceImage(event) {
+    const current = event.currentTarget.dataset.url;
+    const urls = this.data.selectedFiles.map((item) => item.tempFilePath).filter(Boolean);
+    if (current && urls.includes(current)) wx.previewImage({ current, urls });
   },
 
   toggleDraft(event) {
@@ -449,7 +454,7 @@ Page({
 
   updateUnloadGuard() {
     if (this.data.drafts.some((draft) => !draft.saved)) {
-      if (typeof wx.enableAlertBeforeUnload === "function") wx.enableAlertBeforeUnload({ message: "还有未保存的 AI 作业草稿，确认离开吗？" });
+      if (typeof wx.enableAlertBeforeUnload === "function") wx.enableAlertBeforeUnload({ message: "还有未保存的作业识别草稿，确认离开吗？" });
       return;
     }
     this.disableUnloadGuard();
@@ -465,7 +470,7 @@ Page({
     try {
       await callFunction("ai", "cancelImportJob", { jobId });
     } catch (error) {
-      console.error("Cancel AI import job failed", { stage: "cancel", message: error.message });
+      console.error("Cancel image import job failed", { stage: "cancel", message: error.message });
     }
   },
 

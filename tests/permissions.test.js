@@ -14,9 +14,12 @@ test("普通成员只能删除自己录入的作业", () => {
 
 test("孩子只能执行允许的协作动作", () => {
   assert.equal(canPerform("child", "toggleHomework", {}), true);
+  assert.equal(canPerform("child", "updateHomeworkLearningState", {}), true);
   assert.equal(canPerform("child", "createHomework", {}), false);
   assert.equal(canPerform("child", "manageTimetable", {}), false);
   assert.equal(canPerform("child", "importTimetable", {}), false);
+  assert.equal(canPerform("child", "createOwnPlan", {}), true);
+  assert.equal(canPerform("child", "managePlan", {}), false);
 });
 
 test("创建者和普通成员可维护并导入通知与课程表", () => {
@@ -71,7 +74,7 @@ function loadPage(relativePath, overrides = {}) {
   const callFunction = async (...args) => {
     callFunctionCalls.push(args);
     if (args[0] === "settings") return { subjects: ["语文"] };
-    if (args[0] === "ai" && args[1] === "getStatus") return { enabled: false, canImport: false, blockedReason: "AI 图片导入尚未配置" };
+    if (args[0] === "ai" && args[1] === "getStatus") return { enabled: false, canImport: false, blockedReason: "图片识别导入尚未配置" };
     if (args[0] === "homework") return { items: [], hasMore: false };
     if (args[0] === "notice") return { items: [], hasMore: false };
     if (args[0] === "plan") return { items: [] };
@@ -170,6 +173,14 @@ test("孩子会话加载后列表页隐藏维护入口且事件不会跳转", as
     const fixture = loadPage(item.path);
     await fixture.page.onShow();
     assert.equal(fixture.page.data.canManage, false, item.path);
+    if (item.path.includes("plan-list")) {
+      assert.equal(fixture.page.data.canCreate, true, item.path);
+      fixture.page.create();
+      assert.equal(fixture.navigateToCalls.length, 1, item.path);
+      fixture.page.edit({ currentTarget: { dataset: { id: "resource-1" } } });
+      assert.equal(fixture.navigateToCalls.length, 1, item.path);
+      continue;
+    }
     for (const handler of item.handlers) {
       fixture.page[handler]({ currentTarget: { dataset: { id: "resource-1" } } });
     }
@@ -231,7 +242,7 @@ test("孩子直接加载维护页时立即返回且不读取业务详情", async
     const fixture = loadPage(pagePath);
     await fixture.page.onLoad({ id: "resource-1" });
     assert.equal(fixture.navigateBackCalls.length, 1, pagePath);
-    assert.equal(fixture.callFunctionCalls.length, 0, pagePath);
+    assert.equal(fixture.callFunctionCalls.length, pagePath.includes("plan-edit") ? 1 : 0, pagePath);
   }
 });
 
@@ -248,7 +259,7 @@ test("编辑页仅对存在但无权的会话返回上一页", async () => {
       });
       await fixture.page.onLoad({ id: "resource-1" });
       assert.equal(fixture.navigateBackCalls.length, 1, `${role}: ${pagePath}`);
-      assert.equal(fixture.callFunctionCalls.length, 0, `${role}: ${pagePath}`);
+      assert.equal(fixture.callFunctionCalls.length, role === "child" && pagePath.includes("plan-edit") ? 1 : 0, `${role}: ${pagePath}`);
     }
   }
   for (const pagePath of paths) {
@@ -337,15 +348,18 @@ test("孩子触发保存删除时不会产生外部副作用", async () => {
   await noticeEdit.page.remove();
   assert.deepEqual([noticeEdit.showModalCalls.length, noticeEdit.callFunctionCalls.length], [0, 0]);
 
-  const planEdit = loadPage("miniprogram/pages/plan-edit/plan-edit.js");
-  planEdit.page.currentUser = { role: "child" };
-  await planEdit.page.save();
-  await planEdit.page.remove();
-  assert.deepEqual([planEdit.showModalCalls.length, planEdit.callFunctionCalls.length], [0, 0]);
-
   assert.equal(homeworkEdit.toastCalls.at(-1).icon, "none");
   assert.equal(noticeEdit.toastCalls.at(-1).icon, "none");
-  assert.equal(planEdit.toastCalls.at(-1).icon, "none");
+});
+
+test("孩子可以从计划编辑页创建自己的计划", async () => {
+  const fixture = loadPage("miniprogram/pages/plan-edit/plan-edit.js");
+  await fixture.page.onLoad({ type: "daily", date: "2026-09-19" });
+  fixture.page.setData({ "form.title": "自己的晚间计划", "form.items": [{ text: "整理错题", isDone: false, priority: "medium" }] });
+  await fixture.page.save();
+  const createCall = fixture.callFunctionCalls.find((args) => args[0] === "plan" && args[1] === "create");
+  assert.ok(createCall);
+  assert.equal(createCall[2].assignee, "child");
 });
 
 test("权限刷新等待期间保存操作只提交一次", async () => {
@@ -375,7 +389,6 @@ test("会话请求失败时页面副作用被安全拒绝", async () => {
   const saveFixtures = [
     { path: "miniprogram/pages/homework-edit/homework-edit.js", prepare(page) { page.setData({ "form.subject": "语文", "form.title": "作业" }); } },
     { path: "miniprogram/pages/notice-edit/notice-edit.js", prepare(page) { page.setData({ "form.title": "通知" }); } },
-    { path: "miniprogram/pages/plan-edit/plan-edit.js", prepare(page) { page.setData({ "form.title": "计划", "form.items": [{ text: "子任务", isDone: false, priority: "medium" }] }); } },
   ];
   for (const item of saveFixtures) {
     const fixture = loadPage(item.path, { requireFamily: async () => { throw rejection; } });
@@ -404,7 +417,6 @@ test("保存和删除使用最新会话拒绝降级账号", async () => {
   const saveFixtures = [
     { path: "miniprogram/pages/homework-edit/homework-edit.js", prepare(page) { page.setData({ "form.subject": "语文", "form.title": "作业" }); } },
     { path: "miniprogram/pages/notice-edit/notice-edit.js", prepare(page) { page.setData({ "form.title": "通知" }); } },
-    { path: "miniprogram/pages/plan-edit/plan-edit.js", prepare(page) { page.setData({ "form.title": "计划", "form.items": [{ text: "子任务", isDone: false, priority: "medium" }] }); } },
   ];
   for (const item of saveFixtures) {
     const fixture = loadPage(item.path, { session: { user: { role: "child", familyId: "family-1" }, family: { currentSemester: "2026下", educationStage: "junior_high" } } });
@@ -416,7 +428,6 @@ test("保存和删除使用最新会话拒绝降级账号", async () => {
   for (const path of [
     "miniprogram/pages/homework-detail/homework-detail.js",
     "miniprogram/pages/notice-edit/notice-edit.js",
-    "miniprogram/pages/plan-edit/plan-edit.js",
   ]) {
     const fixture = loadPage(path, { session: { user: { role: "child", familyId: "family-1" }, family: { currentSemester: "2026下", educationStage: "junior_high" } } });
     fixture.page.currentUser = { role: "creator", familyId: "family-1" };
@@ -471,11 +482,6 @@ test("删除确认后按最新会话拒绝失效权限和会话异常", async ()
       path: "miniprogram/pages/notice-edit/notice-edit.js",
       domain: "notice",
       childToast: "孩子账号不能新增或编辑通知",
-    },
-    {
-      path: "miniprogram/pages/plan-edit/plan-edit.js",
-      domain: "plan",
-      childToast: "孩子账号不能新增或编辑计划",
     },
   ];
 

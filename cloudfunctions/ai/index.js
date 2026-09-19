@@ -10,6 +10,7 @@ const {
   validateImageBuffer,
   getBeijingDate,
   normalizeSubjects,
+  normalizeRecognitionGlossary,
   validateImportScope,
   validateImportType,
   extractModelPayload,
@@ -149,7 +150,7 @@ function createAiService(dependencies) {
       canImport: configuration.enabled && allowed,
       maxImages: MAX_IMAGES,
       maxImageBytes: MAX_IMAGE_BYTES,
-      blockedReason: configuration.enabled ? (allowed ? "" : "孩子账号不能使用 AI 导入") : "AI 图片导入尚未配置",
+      blockedReason: configuration.enabled ? (allowed ? "" : "孩子账号不能使用智能导入") : "图片识别导入尚未配置",
     };
   }
 
@@ -265,16 +266,24 @@ function createAiService(dependencies) {
     const familyResult = await db.collection("families").doc(user.familyId).get();
     const family = familyResult && familyResult.data;
     if (!family || !/^\d{4}(上|下)$/.test(family.currentSemester)) throw new Error("FAMILY_UNAVAILABLE");
-    const subjectResult = await db.collection("subjects").where({
-      familyId: user.familyId,
-      educationStage: family.educationStage,
-      grade: family.grade,
-    }).limit(1).get();
+    const [subjectResult, settingsResult] = await Promise.all([
+      db.collection("subjects").where({
+        familyId: user.familyId,
+        educationStage: family.educationStage,
+        grade: family.grade,
+      }).limit(1).get(),
+      db.collection("settings").where({ familyId: user.familyId }).limit(1).get(),
+    ]);
     const record = subjectResult && subjectResult.data && subjectResult.data[0];
+    const settings = settingsResult && settingsResult.data && settingsResult.data[0];
     const sourceSubjects = record && Array.isArray(record.subjects)
       ? record.subjects
       : DEFAULT_SUBJECTS[family.educationStage] || [];
-    return { semester: family.currentSemester, subjects: normalizeSubjects(sourceSubjects) };
+    return {
+      semester: family.currentSemester,
+      subjects: normalizeSubjects(sourceSubjects),
+      recognitionGlossary: normalizeRecognitionGlossary(settings && settings.recognitionGlossary),
+    };
   }
 
   async function recognize(job, configuration, context) {
@@ -302,18 +311,24 @@ function createAiService(dependencies) {
     const importType = validateImportType(job.importType);
     let prompt;
     if (importType === "notice") {
-      prompt = buildNoticeRecognitionPrompt({ date: recognitionDate, semester: context.semester });
+      prompt = buildNoticeRecognitionPrompt({
+        date: recognitionDate,
+        semester: context.semester,
+        recognitionGlossary: context.recognitionGlossary,
+      });
     } else if (importType === "timetable") {
       prompt = buildTimetableRecognitionPrompt({
         date: recognitionDate,
         semester: context.semester,
         subjects: context.subjects,
+        recognitionGlossary: context.recognitionGlossary,
       });
     } else if (importType === "homework") {
       prompt = buildRecognitionPrompt({
         date: recognitionDate,
         semester: context.semester,
         subjects: context.subjects,
+        recognitionGlossary: context.recognitionGlossary,
         importScope: validateImportScope(job.importScope),
       });
     } else {
@@ -368,13 +383,13 @@ function createAiService(dependencies) {
         const failedItem = result && Array.isArray(result.fileList)
           ? result.fileList.find((item) => !item || item.code !== "SUCCESS")
           : null;
-        logger.error("AI import cleanup failed", {
+        logger.error("Image import cleanup failed", {
           jobId, stage, code: getCleanupErrorCode(failedItem),
         });
       }
     } catch (error) {
       cleanupRequired = true;
-      logger.error("AI import cleanup failed", {
+      logger.error("Image import cleanup failed", {
         jobId, stage, code: getCleanupErrorCode(error),
       });
     }
@@ -447,9 +462,9 @@ function failure(message) {
 
 const ERROR_MESSAGES = {
   UNAUTHORIZED: "请先登录并加入家庭",
-  FORBIDDEN: "孩子账号不能使用 AI 导入",
-  CONFIGURATION: "AI 图片导入尚未配置",
-  DAILY_LIMIT: "今日 AI 导入次数已达上限，请明天再试",
+  FORBIDDEN: "孩子账号不能使用智能导入",
+  CONFIGURATION: "图片识别导入尚未配置",
+  DAILY_LIMIT: "今日智能导入次数已达上限，请明天再试",
   INVALID_FILE_COUNT: "请选择 1 至 3 张截图",
   INVALID_FILE_METADATA: "截图信息不完整",
   INVALID_FILE_TYPE: "仅支持 JPEG 或 PNG 截图",
@@ -466,25 +481,25 @@ const ERROR_MESSAGES = {
   IMAGE_TOO_LARGE: "单张截图不能超过 4 MB",
   IMAGE_TYPE_MISMATCH: "临时截图格式不一致，请重新导入",
   IMAGE_SIZE_MISMATCH: "临时截图大小不一致，请重新导入",
-  INVALID_MODEL_OUTPUT: "AI 识别结果格式异常，请重新尝试",
-  MODEL_OUTPUT_TOO_LARGE: "AI 识别结果格式异常，请重新尝试",
+  INVALID_MODEL_OUTPUT: "识别结果格式异常，请重新尝试",
+  MODEL_OUTPUT_TOO_LARGE: "识别结果格式异常，请重新尝试",
   MODEL_OUTPUT_TRUNCATED: "识别内容较多，请减少截图或分批识别",
-  INVALID_MODEL_JSON: "AI 识别结果格式异常，请重新尝试",
-  INVALID_MODEL_STRUCTURE: "AI 识别结果格式异常，请重新尝试",
+  INVALID_MODEL_JSON: "识别结果格式异常，请重新尝试",
+  INVALID_MODEL_STRUCTURE: "识别结果格式异常，请重新尝试",
   NO_VALID_DRAFTS: "没有识别到可用作业，请更换清晰截图",
   NO_VALID_NOTICE_DRAFTS: "没有识别到可用通知，请更换清晰截图",
   NO_VALID_TIMETABLE_ENTRIES: "没有识别到可用课程，请更换清晰截图",
-  UNSUPPORTED_IMPORT_TYPE: "该类 AI 导入尚未开放",
-  MODEL_AUTHENTICATION_FAILED: "AI 服务配置异常，请联系管理员",
-  MODEL_RATE_LIMITED: "AI 服务繁忙或额度不足，请稍后重试",
-  MODEL_REQUEST_FAILED: "AI 识别服务暂时不可用，请稍后重试",
-  MODEL_RESPONSE_TOO_LARGE: "AI 识别结果过大，请减少截图后重试",
-  MODEL_TIMEOUT: "AI 识别超时，请减少截图后重试",
+  UNSUPPORTED_IMPORT_TYPE: "该类智能导入尚未开放",
+  MODEL_AUTHENTICATION_FAILED: "图片识别服务配置异常，请联系管理员",
+  MODEL_RATE_LIMITED: "图片识别服务繁忙或额度不足，请稍后重试",
+  MODEL_REQUEST_FAILED: "图片识别服务暂时不可用，请稍后重试",
+  MODEL_RESPONSE_TOO_LARGE: "图片识别结果过大，请减少截图后重试",
+  MODEL_TIMEOUT: "图片识别超时，请减少截图后重试",
 };
 
 function publicErrorMessage(error) {
   return ERROR_MESSAGES[error && error.message]
-    || "AI 图片导入暂时不可用，请稍后重试";
+    || "图片识别导入暂时不可用，请稍后重试";
 }
 
 const service = createAiService({
@@ -510,7 +525,7 @@ exports.main = async (event = {}) => {
       default: return failure("不支持的操作");
     }
   } catch (error) {
-    console.error("AI import action failed", { action, code: Object.hasOwn(ERROR_MESSAGES, error.message) ? error.message : "INTERNAL" });
+    console.error("Image import action failed", { action, code: Object.hasOwn(ERROR_MESSAGES, error.message) ? error.message : "INTERNAL" });
     return failure(publicErrorMessage(error));
   }
 };

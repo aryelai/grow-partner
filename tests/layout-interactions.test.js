@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createListCompletion } = require("../miniprogram/utils/list-completion");
-const { decorateNotice } = require("../miniprogram/utils/notice");
+const { decorateNotice, sortNotices } = require("../miniprogram/utils/notice");
 const { resetGuestCompletion } = require("../miniprogram/utils/guest-state");
 const { createGuestHomeworkItems, createGuestNoticeItems } = require("../miniprogram/utils/guest-experience");
 
@@ -90,4 +90,23 @@ test("通知时间按截止、事项、提醒、发布降级，提醒已发送�
   for (const invalid of [null, false, {}, 0, NaN, "invalid"]) {
     assert.equal(decorateNotice({ deadline: invalid }).keyTimeText, "待补充");
   }
+});
+
+test("待处理通知按逾期、临近时间和无明确时间排列", () => {
+  const result = sortNotices([
+    { _id: "without-time", createdAt: "2026-09-19T08:00:00.000Z" },
+    { _id: "future", deadline: "2026-09-20T08:00:00.000Z" },
+    { _id: "overdue-later", deadline: "2026-09-18T08:00:00.000Z" },
+    { _id: "overdue-earlier", deadline: "2026-09-17T08:00:00.000Z" },
+  ], new Date("2026-09-19T00:00:00.000Z"));
+  assert.deepEqual(result.map((item) => item._id), ["overdue-earlier", "overdue-later", "future", "without-time"]);
+});
+
+test("通知详情提供可逐项完成的内部要求清单", () => {
+  const template = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../miniprogram/pages/notice-detail/notice-detail.wxml"), "utf8");
+  assert.match(template, /内部要求清单/);
+  assert.match(template, /bindtap="toggleRequirement"/);
+  const editTemplate = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../miniprogram/pages/notice-edit/notice-edit.wxml"), "utf8");
+  assert.match(editTemplate, /bindtap="addRequirement"/);
+  assert.match(editTemplate, /bindinput="onRequirementInput"/);
 });

@@ -21,6 +21,17 @@ test("有效限时作业按截止时间升序排列", () => {
   assert.deepEqual(result.map((item) => item._id), ["soon", "later"]);
 });
 
+test("逾期未完成作业优先于未到期和无截止时间作业", () => {
+  const result = sortHomework([
+    { _id: "without-deadline", isCompleted: false, isImportant: true },
+    { _id: "future", isCompleted: false, hasDeadline: true, deadline: "2026-09-20T08:00:00.000Z" },
+    { _id: "overdue-later", isCompleted: false, hasDeadline: true, deadline: "2026-09-18T08:00:00.000Z" },
+    { _id: "overdue-earlier", isCompleted: false, hasDeadline: true, deadline: "2026-09-17T08:00:00.000Z" },
+  ], new Date("2026-09-19T00:00:00.000Z"));
+
+  assert.deepEqual(result.map((item) => item._id), ["overdue-earlier", "overdue-later", "future", "without-deadline"]);
+});
+
 test("无有效截止时间时重要作业优先", () => {
   const result = sortHomework([
     { _id: "normal", isCompleted: false, isImportant: false, createdAt: "2026-09-06T12:00:00.000Z" },

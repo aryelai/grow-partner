@@ -69,6 +69,16 @@ test("作业列表对有权限用户保留 AI 导入入口并由点击处理不�
   assert.doesNotMatch(template, /wx:if="\{\{canImport\}\}"/);
 });
 
+test("三类图片识别在核对阶段保留本地原图并支持放大对照", () => {
+  for (const pageName of ["homework-import", "notice-import", "timetable-import"]) {
+    const source = fs.readFileSync(path.resolve(__dirname, `../miniprogram/pages/${pageName}/${pageName}.js`), "utf8");
+    const template = fs.readFileSync(path.resolve(__dirname, `../miniprogram/pages/${pageName}/${pageName}.wxml`), "utf8");
+    assert.match(source, /previewSourceImage\(event\)/, pageName);
+    assert.match(template, /bindtap="previewSourceImage"/, pageName);
+    assert.match(template, /点击放大对照/, pageName);
+  }
+});
+
 test("截图校验接受一至三张 JPEG 或 PNG 且包含四兆字节边界", () => {
   const files = validateSelectedFiles([
     imageFile(),
@@ -517,7 +527,7 @@ test("孩子直接进入导入页会被拒绝且不会调用 AI", async () => {
   assert.deepEqual(fixture.navigations, ["back"]);
   assert.equal(fixture.calls.length, 0);
   await fixture.page.chooseScreenshots();
-  assert.match(fixture.toasts.at(-1).title, /孩子账号不能使用 AI 导入/);
+  assert.match(fixture.toasts.at(-1).title, /孩子账号不能使用智能导入/);
 });
 
 test("识别流程按顺序申请凭据、上传并识别但不自动保存", async () => {

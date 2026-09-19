@@ -49,7 +49,7 @@ Page({
     }
     this.currentUser = session.user;
     if (!canPerform(session.user.role, "importTimetable")) {
-      wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
+      wx.showToast({ title: "孩子账号不能使用智能导入", icon: "none" });
       wx.navigateBack();
       return null;
     }
@@ -82,7 +82,7 @@ Page({
         existingEntries: normalizeTimetableEntries(timetable.entries),
         version: Number.isSafeInteger(timetable.version) && timetable.version >= 0 ? timetable.version : 0,
         enabled,
-        blockedReason: enabled ? "" : status.blockedReason || "AI 课程表导入暂不可用",
+        blockedReason: enabled ? "" : status.blockedReason || "课程表智能导入暂不可用",
       });
     } catch (error) {
       if (this.pageDestroyed) return;
@@ -90,7 +90,7 @@ Page({
         semester: session.family.currentSemester,
         subjects,
         enabled: false,
-        blockedReason: "AI 课程表导入状态加载失败，请稍后重试",
+        blockedReason: "课程表智能导入状态加载失败，请稍后重试",
       });
       console.error("Load timetable import context failed", { message: error.message });
     }
@@ -98,11 +98,11 @@ Page({
 
   async chooseScreenshot() {
     if (!canPerform(this.currentUser && this.currentUser.role, "importTimetable")) {
-      wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
+      wx.showToast({ title: "孩子账号不能使用智能导入", icon: "none" });
       return;
     }
     if (!this.data.enabled) {
-      wx.showToast({ title: this.data.blockedReason || "AI 课程表导入暂不可用", icon: "none" });
+      wx.showToast({ title: this.data.blockedReason || "课程表智能导入暂不可用", icon: "none" });
       return;
     }
     if (this.data.processing || this.data.saving) return;
@@ -155,14 +155,13 @@ Page({
         }
         if (this.pageDestroyed) return;
       }
-      this.setData({ phase: "analyzing", progressText: "AI 正在逐格识别课程表，请稍候…" });
+      this.setData({ phase: "analyzing", progressText: "正在逐格识别课程表，请稍候…" });
       const result = await callFunction("ai", "analyzeImportJob", { jobId });
       if (this.activeJobId === jobId) this.activeJobId = "";
       if (this.pageDestroyed) return;
       const drafts = createEditableTimetableDrafts(result.entries, this.data.subjects, this.data.existingEntries, jobId);
       if (!drafts.length) throw new Error("没有识别到可确认的课程，请更换清晰截图重试");
       this.setData({
-        selectedFiles: [],
         drafts,
         warnings: Array.isArray(result.warnings) ? result.warnings.filter((item) => typeof item === "string" && item.trim()).slice(0, 20) : [],
         phase: "ready",
@@ -173,13 +172,19 @@ Page({
       if (!this.pageDestroyed) {
         await this.cancelActiveJob(jobId);
         this.setData({ phase: "selected", progressText: "识别未完成，可重新发起本次导入" });
-        showError(error, "AI 课程表识别失败");
+        showError(error, "课程表图片识别失败");
       }
     } finally {
       this.recognizeInProgress = false;
       this.uploadRequestTask = null;
       if (!this.pageDestroyed) this.setData({ processing: false });
     }
+  },
+
+  previewSourceImage(event) {
+    const current = event.currentTarget.dataset.url;
+    const urls = this.data.selectedFiles.map((item) => item.tempFilePath).filter(Boolean);
+    if (current && urls.includes(current)) wx.previewImage({ current, urls });
   },
 
   toggleDraft(event) {
@@ -318,7 +323,7 @@ Page({
 
   updateUnloadGuard() {
     if (this.data.drafts.length) {
-      if (typeof wx.enableAlertBeforeUnload === "function") wx.enableAlertBeforeUnload({ message: "还有未保存的 AI 课程表草稿，确认离开吗？" });
+      if (typeof wx.enableAlertBeforeUnload === "function") wx.enableAlertBeforeUnload({ message: "还有未保存的课程表识别草稿，确认离开吗？" });
       return;
     }
     this.disableUnloadGuard();
@@ -334,7 +339,7 @@ Page({
     try {
       await callFunction("ai", "cancelImportJob", { jobId });
     } catch (error) {
-      console.error("Cancel timetable AI import job failed", { message: error.message });
+      console.error("Cancel timetable image import job failed", { message: error.message });
     }
   },
 

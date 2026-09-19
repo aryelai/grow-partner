@@ -12,9 +12,13 @@ function success(data, message = "") { return { success: true, data, message }; 
 function failure(message) { return { success: false, data: null, message }; }
 function cleanText(value, maxLength) { return typeof value === "string" ? value.trim().slice(0, maxLength) : ""; }
 function isValidDate(value) { const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value); if (!matched) return false; const year = Number(matched[1]); const month = Number(matched[2]); const day = Number(matched[3]); const date = new Date(Date.UTC(year, month - 1, day)); return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day; }
-function publicPlan(value) {
+function canEditPlan(user, value) {
+  return user.role !== "child" || (value.createdBy === user.openid && value.assignee === "child");
+}
+
+function publicPlan(value, user) {
   const { createdBy, ...safeValue } = value;
-  return safeValue;
+  return { ...safeValue, canEdit: canEditPlan(user, value) };
 }
 
 async function requireUser(openid) {
@@ -73,21 +77,22 @@ async function list(user, event) {
     collection.count(),
     collection.orderBy("date", "asc").orderBy("createdAt", "desc").skip((page - 1) * pageSize).limit(pageSize).get(),
   ]);
-  return success({ items: dataResult.data.map(publicPlan), page, total: countResult.total, hasMore: page * pageSize < countResult.total });
+  return success({ items: dataResult.data.map((item) => publicPlan(item, user)), page, total: countResult.total, hasMore: page * pageSize < countResult.total });
 }
 
 async function get(user, event) {
   const item = await findPlan(cleanText(event.id, 64), user.familyId);
-  return item ? success(publicPlan(item)) : failure("计划不存在或无权查看");
+  return item ? success(publicPlan(item, user)) : failure("计划不存在或无权查看");
 }
 
 async function save(user, event, updating) {
-  if (user.role === "child") return failure("孩子账号不能维护计划");
   const payload = validatePayload(event);
   if (payload.error) return failure(payload.error);
+  if (user.role === "child" && payload.data.assignee !== "child") return failure("孩子只能创建由自己执行的计划");
   if (updating) {
     const item = await findPlan(cleanText(event.id, 64), user.familyId);
     if (!item) return failure("计划不存在或无权编辑");
+    if (!canEditPlan(user, item)) return failure("只能编辑自己创建的个人计划");
     await db.collection("plans").doc(item._id).update({ data: payload.data });
     return success({ id: item._id }, "计划已更新");
   }
@@ -105,9 +110,9 @@ async function toggleItem(user, event) {
 }
 
 async function remove(user, event) {
-  if (user.role === "child") return failure("孩子账号不能删除计划");
   const item = await findPlan(cleanText(event.id, 64), user.familyId);
   if (!item) return failure("计划不存在或无权删除");
+  if (!canEditPlan(user, item)) return failure("只能删除自己创建的个人计划");
   await db.collection("plans").doc(item._id).remove();
   return success(null, "计划已删除");
 }

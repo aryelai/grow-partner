@@ -79,6 +79,7 @@ test("所有家庭角色可读取当前学期课程表且空表版本为零", as
       semester: "2026下",
       version: 0,
       entries: [],
+      overrides: [],
     });
   }
 });
@@ -160,6 +161,35 @@ test("批量合并返回覆盖统计且删除课程格递增版本", async () =>
   const removed = await fixture.service.removeEntry("openid-1", { expectedVersion: 2, dayOfWeek: 1, period: 1 });
   assert.equal(removed.version, 3);
   assert.deepEqual(removed.entries.map((entry) => entry.courseName), ["英语"]);
+});
+
+test("临时调课和停课独立于每周课程并可恢复", async () => {
+  const fixture = createFixture();
+  await fixture.service.saveEntry("openid-1", {
+    expectedVersion: 0,
+    entry: { dayOfWeek: 5, period: 1, courseName: "语文" },
+  });
+  const changed = await fixture.service.saveOverride("openid-1", {
+    expectedVersion: 1,
+    override: { date: "2026-09-18", period: 1, isCancelled: false, courseName: "班会" },
+  });
+  assert.equal(changed.version, 2);
+  assert.equal(changed.entries[0].courseName, "语文");
+  assert.equal(changed.overrides[0].courseName, "班会");
+
+  const cancelled = await fixture.service.saveOverride("openid-1", {
+    expectedVersion: 2,
+    override: { date: "2026-09-18", period: 1, isCancelled: true },
+  });
+  assert.equal(cancelled.overrides[0].isCancelled, true);
+  const restored = await fixture.service.removeOverride("openid-1", {
+    expectedVersion: 3,
+    date: "2026-09-18",
+    period: 1,
+  });
+  assert.equal(restored.version, 4);
+  assert.deepEqual(chinese(restored.overrides), []);
+  assert.equal(restored.entries[0].courseName, "语文");
 });
 
 test("无身份和非法角色不能读取课程表", async () => {

@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 
 const MAX_ENTRIES = 84;
+const MAX_OVERRIDES = 180;
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 function cleanText(value, maxLength) {
@@ -53,6 +54,49 @@ function normalizeEntries(value) {
   return entries.sort((left, right) => left.dayOfWeek - right.dayOfWeek || left.period - right.period);
 }
 
+function isValidDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function normalizeOverride(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) throw new Error("INVALID_OVERRIDE");
+  const date = cleanText(candidate.date, 10);
+  if (!isValidDate(date)) throw new Error("INVALID_OVERRIDE_DATE");
+  const period = candidate.period;
+  if (!Number.isSafeInteger(period) || period < 1 || period > 12) throw new Error("INVALID_PERIOD");
+  const isCancelled = candidate.isCancelled === true;
+  if (isCancelled) {
+    return { date, period, isCancelled: true, courseName: "", teacher: "", location: "", startTime: "", endTime: "" };
+  }
+  const entry = normalizeEntry({ ...candidate, dayOfWeek: 1 });
+  return {
+    date,
+    period,
+    isCancelled: false,
+    courseName: entry.courseName,
+    teacher: entry.teacher,
+    location: entry.location,
+    startTime: entry.startTime,
+    endTime: entry.endTime,
+  };
+}
+
+function normalizeOverrides(value) {
+  if (!Array.isArray(value) || value.length > MAX_OVERRIDES) throw new Error("INVALID_OVERRIDES");
+  const overrides = [];
+  const positions = new Set();
+  for (const candidate of value) {
+    const override = normalizeOverride(candidate);
+    const position = `${override.date}:${override.period}`;
+    if (positions.has(position)) throw new Error("DUPLICATE_OVERRIDE");
+    positions.add(position);
+    overrides.push(override);
+  }
+  return overrides.sort((left, right) => left.date.localeCompare(right.date) || left.period - right.period);
+}
+
 function validateExpectedVersion(value) {
   if (!Number.isSafeInteger(value) || value < 0) throw new Error("INVALID_VERSION");
   return value;
@@ -80,9 +124,12 @@ function mergeTimetableEntries(currentValue, incomingValue) {
 
 module.exports = {
   MAX_ENTRIES,
+  MAX_OVERRIDES,
   validateSemester,
   normalizeEntry,
   normalizeEntries,
+  normalizeOverride,
+  normalizeOverrides,
   validateExpectedVersion,
   buildTimetableId,
   mergeTimetableEntries,

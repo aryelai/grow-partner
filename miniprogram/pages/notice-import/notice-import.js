@@ -52,7 +52,7 @@ Page({
     }
     this.currentUser = session.user;
     if (!canPerform(session.user.role, "importNotice")) {
-      wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
+      wx.showToast({ title: "孩子账号不能使用智能导入", icon: "none" });
       wx.navigateBack();
       return null;
     }
@@ -73,26 +73,26 @@ Page({
       this.setData({
         semester: session.family.currentSemester,
         enabled,
-        blockedReason: enabled ? "" : status.blockedReason || "AI 通知导入暂不可用",
+        blockedReason: enabled ? "" : status.blockedReason || "通知智能导入暂不可用",
       });
     } catch (error) {
       if (this.pageDestroyed) return;
       this.setData({
         semester: session.family.currentSemester,
         enabled: false,
-        blockedReason: "AI 通知导入状态加载失败，请稍后重试",
+        blockedReason: "通知智能导入状态加载失败，请稍后重试",
       });
-      console.error("Load notice AI import status failed", { message: error.message });
+      console.error("Load notice image import status failed", { message: error.message });
     }
   },
 
   async chooseScreenshots() {
     if (!canPerform(this.currentUser && this.currentUser.role, "importNotice")) {
-      wx.showToast({ title: "孩子账号不能使用 AI 导入", icon: "none" });
+      wx.showToast({ title: "孩子账号不能使用智能导入", icon: "none" });
       return;
     }
     if (!this.data.enabled) {
-      wx.showToast({ title: this.data.blockedReason || "AI 通知导入暂不可用", icon: "none" });
+      wx.showToast({ title: this.data.blockedReason || "通知智能导入暂不可用", icon: "none" });
       return;
     }
     if (this.data.processing) return;
@@ -160,7 +160,7 @@ Page({
         }
         if (this.pageDestroyed) return;
       }
-      this.setData({ phase: "analyzing", progressText: "AI 正在识别并拆分通知，请稍候…" });
+      this.setData({ phase: "analyzing", progressText: "正在识别并整理通知，请稍候…" });
       const result = await callFunction("ai", "analyzeImportJob", { jobId });
       if (this.activeJobId === jobId) this.activeJobId = "";
       if (this.pageDestroyed) return;
@@ -174,7 +174,6 @@ Page({
         ? result.warnings.filter((item) => typeof item === "string" && item.trim()).slice(0, 20)
         : [];
       this.setData({
-        selectedFiles: [],
         drafts: visibleDrafts,
         separateDrafts,
         mergedDrafts,
@@ -193,13 +192,19 @@ Page({
       if (!this.pageDestroyed) {
         await this.cancelActiveJob(jobId);
         this.setData({ phase: "selected", progressText: "识别未完成，可重新发起本次导入" });
-        showError(error, "AI 通知识别失败");
+        showError(error, "通知图片识别失败");
       }
     } finally {
       this.recognizeInProgress = false;
       this.uploadRequestTask = null;
       if (!this.pageDestroyed) this.setData({ processing: false });
     }
+  },
+
+  previewSourceImage(event) {
+    const current = event.currentTarget.dataset.url;
+    const urls = this.data.selectedFiles.map((item) => item.tempFilePath).filter(Boolean);
+    if (current && urls.includes(current)) wx.previewImage({ current, urls });
   },
 
   onDraftInput(event) {
@@ -282,7 +287,7 @@ Page({
     const confirmed = await new Promise((resolve) => {
       wx.showModal({
         title: `批量保存 ${payloads.length} 条通知`,
-        content: "将按当前核对结果保存，默认不启用提醒，也不会自动采用 AI 时间建议。需要提醒或事项时间时，请使用单条通知的高级设置。",
+        content: "将按当前核对结果保存，默认不启用提醒，也不会自动采用识别到的时间。需要提醒或事项时间时，请使用单条通知的高级设置。",
         confirmText: "确认保存",
         success: (result) => resolve(result.confirm === true),
         fail: () => resolve(false),
@@ -303,7 +308,7 @@ Page({
           this.markDraftSaved(payload.clientRequestId);
         } catch (error) {
           failures.push({ requestId: payload.clientRequestId, message: error.message });
-          console.error("Batch save AI notice draft failed", { requestId: payload.clientRequestId, message: error.message });
+          console.error("Batch save recognized notice draft failed", { requestId: payload.clientRequestId, message: error.message });
         }
         if (this.pageDestroyed) return;
         this.setData({ progressText: `正在保存 ${index + 1}/${payloads.length} 条通知…` });
@@ -356,7 +361,7 @@ Page({
   updateUnloadGuard() {
     if (this.data.drafts.some((draft) => !draft.saved)) {
       if (typeof wx.enableAlertBeforeUnload === "function") {
-        wx.enableAlertBeforeUnload({ message: "还有未保存的 AI 通知草稿，确认离开吗？" });
+        wx.enableAlertBeforeUnload({ message: "还有未保存的通知识别草稿，确认离开吗？" });
       }
       return;
     }
@@ -373,7 +378,7 @@ Page({
     try {
       await callFunction("ai", "cancelImportJob", { jobId });
     } catch (error) {
-      console.error("Cancel notice AI import job failed", { message: error.message });
+      console.error("Cancel notice image import job failed", { message: error.message });
     }
   },
 

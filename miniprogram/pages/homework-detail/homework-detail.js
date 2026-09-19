@@ -3,19 +3,20 @@ const { requireFamily } = require("../../utils/session");
 const { formatDateTime, formatHomeworkDate } = require("../../utils/date");
 const { RELATIONS } = require("../../utils/constants");
 const { canPerform } = require("../../utils/permissions");
+const { LEARNING_STATE_OPTIONS, decorateLearningState } = require("../../utils/homework");
 const { createShareAppMessage, createShareTimelineMessage } = require("../../utils/share");
 
 Page({
   onShareAppMessage: createShareAppMessage,
   onShareTimeline: createShareTimelineMessage,
 
-  data: { id: "", item: null, canEdit: false },
+  data: { id: "", item: null, canEdit: false, canUpdateLearningState: false, learningStateBusy: false },
   onLoad(options) { this.setData({ id: options.id || "" }); },
   async refreshCurrentUser() {
     let session;
     try { session = await requireFamily(); }
-    catch (error) { this.currentUser = null; this.setData({ canEdit: false }); showError(error, "身份校验失败，请稍后重试"); return null; }
-    if (!session) { this.currentUser = null; this.setData({ canEdit: false }); return null; }
+    catch (error) { this.currentUser = null; this.setData({ canEdit: false, canUpdateLearningState: false }); showError(error, "身份校验失败，请稍后重试"); return null; }
+    if (!session) { this.currentUser = null; this.setData({ canEdit: false, canUpdateLearningState: false }); return null; }
     this.currentUser = session.user;
     return session;
   },
@@ -30,8 +31,9 @@ Page({
       const item = await callFunction("homework", "get", { id: this.data.id });
       const isOverdue = item.hasDeadline && !item.isCompleted && new Date(item.deadline).getTime() < Date.now();
       this.setData({
-        item: { ...item, images: item.images || [], videos: item.videos || [], links: item.links || [], extraTags: item.extraTags || [], createdByName: RELATIONS[item.createdByName] || item.createdByName, createdAtText: formatDateTime(item.createdAt), deadlineText: formatDateTime(item.deadline), homeworkDateText: formatHomeworkDate(item.homeworkDate), homeworkDateMissing: formatHomeworkDate(item.homeworkDate) === "日期待补充", isOverdue },
+        item: decorateLearningState({ ...item, images: item.images || [], videos: item.videos || [], links: item.links || [], extraTags: item.extraTags || [], createdByName: RELATIONS[item.createdByName] || item.createdByName, createdAtText: formatDateTime(item.createdAt), deadlineText: formatDateTime(item.deadline), homeworkDateText: formatHomeworkDate(item.homeworkDate), homeworkDateMissing: formatHomeworkDate(item.homeworkDate) === "日期待补充", isOverdue }),
         canEdit: canPerform(this.currentUser.role, "updateHomework"),
+        canUpdateLearningState: canPerform(this.currentUser.role, "updateHomeworkLearningState"),
       });
     } catch (error) { showError(error); }
   },
@@ -46,6 +48,25 @@ Page({
   async toggleCompleted() {
     try { await callFunction("homework", "toggleCompleted", { id: this.data.id, isCompleted: !this.data.item.isCompleted }); await this.load(); }
     catch (error) { showError(error); }
+  },
+  changeLearningState() {
+    if (this.data.learningStateBusy || !this.data.canUpdateLearningState) return;
+    wx.showActionSheet({
+      itemList: LEARNING_STATE_OPTIONS.map((item) => item.label),
+      success: async ({ tapIndex }) => {
+        const option = LEARNING_STATE_OPTIONS[tapIndex];
+        if (!option) return;
+        this.setData({ learningStateBusy: true });
+        try {
+          await callFunction("homework", "updateLearningState", { id: this.data.id, learningState: option.value });
+          await this.load();
+        } catch (error) {
+          showError(error, "学习状态更新失败");
+        } finally {
+          this.setData({ learningStateBusy: false });
+        }
+      },
+    });
   },
   async remove() {
     const session = await this.refreshCurrentUser();

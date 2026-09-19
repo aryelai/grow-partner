@@ -14,6 +14,7 @@
 .capture-guide { margin-top: 22rpx; padding: 18rpx 20rpx; border-radius: 14rpx; background: #F7FAFD; color: var(--text-light); font-size: 24rpx; line-height: 1.65; }
 .capture-guide-title { margin-bottom: 4rpx; color: var(--text); font-weight: 600; }
 .preview-grid { display: flex; flex-wrap: wrap; gap: 14rpx; margin-top: 24rpx; }
+.preview-guide { width: 100%; color: #2F6EAD; font-size: 24rpx; font-weight: 600; }
 .preview-item { position: relative; width: 180rpx; overflow: hidden; border-radius: 14rpx; background: #EEF2F6; }
 .preview-item image { display: block; width: 100%; height: 180rpx; }
 .preview-item > text { position: absolute; right: 8rpx; top: 8rpx; width: 38rpx; height: 38rpx; border-radius: 50%; background: rgba(0, 0, 0, 0.58); color: #fff; text-align: center; line-height: 38rpx; }

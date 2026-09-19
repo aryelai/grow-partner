@@ -1,7 +1,7 @@
 <view class="page import-page">
   <view class="card intro-card">
-    <view class="section-title">从 QQ 作业截图生成草稿</view>
-    <view class="muted intro-text">一次选择 1–3 张清晰截图。AI 只生成可编辑草稿，核对并点击保存前不会写入作业。</view>
+    <view class="section-title">识别 QQ 作业截图</view>
+    <view class="muted intro-text">一次选择 1–3 张清晰截图。系统会提取并整理为可编辑草稿，核对并点击保存前不会写入作业。</view>
     <view class="privacy-note">截图仅用于本次识别，正常识别或取消后立即删除；断网、崩溃等异常由云存储短期生命周期规则兜底删除。截图不会成为作业附件。</view>
     <view wx:if="{{blockedReason}}" class="blocked-note">{{blockedReason}}</view>
   </view>
@@ -31,8 +31,9 @@
       <view>选择后可点“裁剪”，保留有作业的星期列、科目和完整字迹，减少空白区域。优先读取原图，不再提供压缩图选项；模糊字迹、简称和手写文字仍需逐条核对，不确定处请勿直接保存。</view>
     </view>
     <view class="preview-grid" wx:if="{{selectedFiles.length}}">
+      <view class="preview-guide">识别原图 · 点击放大对照</view>
       <view class="preview-item" wx:for="{{selectedFiles}}" wx:key="tempFilePath">
-        <image src="{{item.tempFilePath}}" mode="aspectFill" />
+        <image src="{{item.tempFilePath}}" mode="aspectFill" data-url="{{item.tempFilePath}}" bindtap="previewSourceImage" />
         <text>{{index + 1}}</text>
         <button class="crop-button" data-index="{{index}}" disabled="{{processing || saving || editingImage || drafts.length}}" bindtap="cropScreenshot">裁剪</button>
       </view>
@@ -70,7 +71,7 @@
           <view wx:for="{{subjects}}" wx:for-item="subjectItem" wx:key="*this" class="tag {{item.subject === subjectItem ? 'active' : ''}}" data-index="{{draftIndex}}" data-value="{{subjectItem}}" bindtap="selectSubject">{{subjectItem}}</view>
         </view>
       </scroll-view>
-      <view wx:if="{{!item.subject}}" class="field-warning">AI 未能匹配科目，请手动选择</view>
+      <view wx:if="{{!item.subject}}" class="field-warning">未能匹配科目，请手动选择</view>
     </view>
     <view class="field {{item.homeworkDateUncertain ? 'uncertain-field' : ''}}">
       <text class="field-label">作业日期 *</text>

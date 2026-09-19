@@ -116,3 +116,49 @@ test("新通知默认未完成且外部载荷不能覆盖完成和提醒审计�
   assert.equal(result.success, true);
   assert.equal(current.items().find((item) => item._id === "new-notice").isCompleted, false);
 });
+
+test("旧通知默认空要求清单且成人可原子更新单项完成状态", async () => {
+  const current = fixture({ items: [{
+    _id: "notice-1",
+    familyId: "family-1",
+    semester: "2026下",
+    title: "家长会准备",
+    category: "activity",
+    requirements: [
+      { id: "requirement_01", text: "填写回执", isCompleted: false },
+      { id: "requirement_02", text: "准备笔记本", isCompleted: false },
+    ],
+  }] });
+  const updated = await current.main({ action: "toggleRequirement", id: "notice-1", requirementId: "requirement_02", isCompleted: true });
+  assert.equal(updated.success, true);
+  assert.equal(current.items()[0].requirements[0].isCompleted, false);
+  assert.equal(current.items()[0].requirements[1].isCompleted, true);
+  assert.equal(updated.data.completedCount, 1);
+  assert.equal(updated.data.totalCount, 2);
+
+  const legacy = fixture({ items: [{ _id: "notice-1", familyId: "family-1", title: "旧通知" }] });
+  const result = await legacy.main({ action: "get", id: "notice-1" });
+  assert.equal(result.data.requirements.length, 0);
+});
+
+test("通知要求清单拒绝非法单项、重复编号和孩子越权更新", async () => {
+  const invalid = fixture();
+  const created = await invalid.main({
+    action: "create",
+    semester: "2026下",
+    title: "测试通知",
+    category: "activity",
+    requirements: [
+      { id: "duplicate_01", text: "第一项", isCompleted: false },
+      { id: "duplicate_01", text: "第二项", isCompleted: false },
+    ],
+  });
+  assert.equal(created.success, false);
+  assert.match(created.message, /要求清单/);
+
+  const child = fixture({ role: "child", items: [{
+    _id: "notice-1", familyId: "family-1", title: "通知", requirements: [{ id: "requirement_01", text: "回执", isCompleted: false }],
+  }] });
+  assert.equal((await child.main({ action: "toggleRequirement", id: "notice-1", requirementId: "requirement_01", isCompleted: true })).success, false);
+  assert.equal(child.items()[0].requirements[0].isCompleted, false);
+});

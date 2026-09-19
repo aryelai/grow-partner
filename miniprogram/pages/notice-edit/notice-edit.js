@@ -9,6 +9,25 @@ const { createShareAppMessage, createShareTimelineMessage } = require("../../uti
 const VALID_ADVANCES = new Set([120, 1440]);
 const REMINDER_RELATIONS = Object.entries(RELATIONS).map(([value, label]) => ({ value, label }));
 const SENSITIVE_ERROR_VALUE_PATTERN = /((?:^|[{\s,?&;])(?:["'])?(?:access[_-]?token|refresh[_-]?token|token|api[_-]?key|client[_-]?secret|password|cookie|openid|secret|key)(?:["'])?\s*[:=]\s*)(?:"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|[^\s,;}&]+)/gi;
+const REQUIREMENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
+
+function createRequirementId(index = 0) {
+  return `requirement_${Date.now().toString(36)}_${index}_${Math.random().toString(36).slice(2, 8)}`.slice(0, 64);
+}
+
+function normalizeEditableRequirements(value) {
+  const ids = new Set();
+  return (Array.isArray(value) ? value : []).slice(0, 20).map((item, index) => {
+    const source = typeof item === "string" ? { text: item } : item;
+    if (!source || typeof source !== "object" || Array.isArray(source)) return null;
+    const text = typeof source.text === "string" ? source.text.trim().slice(0, 200) : "";
+    if (!text) return null;
+    let id = typeof source.id === "string" && REQUIREMENT_ID_PATTERN.test(source.id) ? source.id : createRequirementId(index);
+    while (ids.has(id)) id = createRequirementId(index + ids.size);
+    ids.add(id);
+    return { id, text, isCompleted: source.isCompleted === true };
+  }).filter(Boolean);
+}
 
 function hasRelation(value) {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(RELATIONS, value);
@@ -75,6 +94,7 @@ function createFormSnapshot(form) {
     images: Object.freeze([...(Array.isArray(form.images) ? form.images : [])]),
     remindAdvance: Object.freeze([...(Array.isArray(form.remindAdvance) ? form.remindAdvance : [])]),
     remindTargets: Object.freeze([...(Array.isArray(form.remindTargets) ? form.remindTargets : [])]),
+    requirements: Object.freeze(normalizeEditableRequirements(form.requirements).map((item) => Object.freeze(item))),
   });
 }
 
@@ -84,7 +104,7 @@ Page({
 
   data: {
     id: "", categories: NOTICE_CATEGORIES, reminderRelations: createReminderRelations([]),
-    form: { semester: "2026下", title: "", source: "", category: "other", content: "", images: [], remindAdvance: [120], remindTargets: [] },
+    form: { semester: "2026下", title: "", source: "", category: "other", content: "", images: [], requirements: [], remindAdvance: [120], remindTargets: [] },
     reminderEnabled: false, reminderStatus: createUnavailableReminderStatus(), needsSubscription: false, initializing: false, initializationFailed: false,
     remindDate: formatDate(new Date()), remindTime: "08:00", submitting: false,
     eventEnabled: false, eventDate: formatDate(new Date()), eventClock: "08:00",
@@ -152,6 +172,7 @@ Page({
       source: typeof draft.source === "string" ? draft.source.trim().slice(0, 60) : "",
       category,
       content: typeof draft.content === "string" ? draft.content.trim().slice(0, 3000) : "",
+      requirements: normalizeEditableRequirements(draft.requirements),
     };
     this.setData({
       form,
@@ -186,6 +207,7 @@ Page({
       const form = {
         ...item,
         images: Array.isArray(item.images) ? item.images : [],
+        requirements: normalizeEditableRequirements(item.requirements),
         remindAdvance: normalizeAdvance(item.remindAdvance),
         remindTargets: normalizeTargets(item.remindTargets),
       };
@@ -237,6 +259,23 @@ Page({
     });
   },
   onInput(event) { if (!this.isFormLocked()) this.setData({ [`form.${event.currentTarget.dataset.field}`]: event.detail.value }); },
+  addRequirement() {
+    if (this.isFormLocked() || this.data.form.requirements.length >= 20) return;
+    this.setData({ "form.requirements": [...this.data.form.requirements, { id: createRequirementId(this.data.form.requirements.length), text: "", isCompleted: false }] });
+  },
+  onRequirementInput(event) {
+    if (this.isFormLocked()) return;
+    const index = Number(event.currentTarget.dataset.index);
+    if (!Number.isInteger(index) || index < 0 || index >= this.data.form.requirements.length) return;
+    this.setData({ [`form.requirements[${index}].text`]: event.detail.value.slice(0, 200) });
+  },
+  removeRequirement(event) {
+    if (this.isFormLocked()) return;
+    const index = Number(event.currentTarget.dataset.index);
+    if (!Number.isInteger(index) || index < 0 || index >= this.data.form.requirements.length) return;
+    const requirements = this.data.form.requirements.filter((_, itemIndex) => itemIndex !== index);
+    this.setData({ "form.requirements": requirements });
+  },
   selectCategory(event) { if (!this.isFormLocked()) this.setData({ "form.category": event.currentTarget.dataset.value }); },
   toggleReminder(event) {
     if (this.isFormLocked()) return;

@@ -33,8 +33,9 @@
       <view class="settings-section-title">服务与偏好</view>
       <view class="settings-group">
         <button class="settings-item {{expandedSection === 'reminder' ? 'expanded' : ''}}" data-section="reminder" bindtap="toggleSection"><view class="settings-item-icon"><view class="ui-icon ui-icon-bell"></view></view><view class="settings-item-copy"><view class="settings-item-title">通知与提醒</view><view class="settings-item-note">微信提醒、提前时间、接收成员</view></view><text class="chevron">{{expandedSection === 'reminder' ? '⌄' : '›'}}</text></button>
-        <button class="settings-item {{expandedSection === 'ai' ? 'expanded' : ''}}" data-section="ai" bindtap="toggleSection"><view class="settings-item-icon"><view class="ui-icon ui-icon-spark"></view></view><view class="settings-item-copy"><view class="settings-item-title">AI 能力</view><view class="settings-item-note">图片识别状态与使用说明</view></view><text class="chevron">{{expandedSection === 'ai' ? '⌄' : '›'}}</text></button>
+        <button class="settings-item {{expandedSection === 'ai' ? 'expanded' : ''}}" data-section="ai" bindtap="toggleSection"><view class="settings-item-icon"><view class="ui-icon ui-icon-spark"></view></view><view class="settings-item-copy"><view class="settings-item-title">图片识别服务</view><view class="settings-item-note">识别范围、使用方式与隐私说明</view></view><text class="chevron">{{expandedSection === 'ai' ? '⌄' : '›'}}</text></button>
         <button class="settings-item {{expandedSection === 'general' ? 'expanded' : ''}}" data-section="general" bindtap="toggleSection"><view class="settings-item-icon"><view class="ui-icon ui-icon-setting"></view></view><view class="settings-item-copy"><view class="settings-item-title">通用设置</view><view class="settings-item-note">当前学期与家庭编辑权限</view></view><text class="chevron">{{expandedSection === 'general' ? '⌄' : '›'}}</text></button>
+        <button class="settings-item {{expandedSection === 'data' ? 'expanded' : ''}}" data-section="data" bindtap="toggleSection"><view class="settings-item-icon"><view class="ui-icon ui-icon-shield"></view></view><view class="settings-item-copy"><view class="settings-item-title">家庭数据管理</view><view class="settings-item-note">导出、退出家庭与删除边界</view></view><text class="chevron">{{expandedSection === 'data' ? '⌄' : '›'}}</text></button>
         <button class="settings-item {{expandedSection === 'privacy' ? 'expanded' : ''}}" data-section="privacy" bindtap="toggleSection"><view class="settings-item-icon"><view class="ui-icon ui-icon-shield"></view></view><view class="settings-item-copy"><view class="settings-item-title">隐私与关于</view><view class="settings-item-note">隐私保护指引与版本信息</view></view><text class="chevron">{{expandedSection === 'privacy' ? '⌄' : '›'}}</text></button>
       </view>
     </view>
@@ -54,13 +55,20 @@
     </view>
 
     <view class="settings-panel" wx:if="{{expandedSection === 'ai'}}">
-      <view class="panel-heading"><text>AI 能力</text><button class="panel-close" data-section="ai" bindtap="toggleSection" aria-label="收起AI能力">×</button></view>
-      <view class="service-heading"><view class="service-title">AI 图片识别</view><view class="service-note">支持作业、通知与课程表图片，识别结果需核对后保存。实际供应商与模型由云端安全配置控制。</view></view>
-      <view class="field"><text class="field-label">供应商偏好</text><picker range="{{providerLabels}}" value="{{providerIndex}}" disabled="{{!isCreator || saving}}" bindchange="onProviderChange"><view class="picker">{{providerLabels[providerIndex]}}</view></picker></view>
-      <view class="field"><text class="field-label">Base URL</text><input class="input" value="{{settings.aiBaseUrl}}" disabled="{{!isCreator || saving}}" data-field="aiBaseUrl" bindinput="onSettingInput" placeholder="由服务端启用后生效" /></view>
-      <view class="field"><text class="field-label">模型偏好</text><input class="input" value="{{settings.aiModel}}" disabled="{{!isCreator || saving}}" data-field="aiModel" bindinput="onSettingInput" placeholder="实际模型以云端配置为准" /></view>
-      <view class="security-tip">API Key 不在小程序端录入或回显；以上偏好不会直接改变正式识别服务。</view>
-      <button wx:if="{{isCreator}}" class="primary-button panel-save" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存设置</button>
+      <view class="panel-heading"><text>图片识别服务</text><button class="panel-close" data-section="ai" bindtap="toggleSection" aria-label="收起图片识别服务">×</button></view>
+      <view class="service-heading"><view class="service-title">截图文字识别</view><view class="service-note">支持从作业、通知与课程表截图中提取文字并整理为可编辑草稿。所有结果都需由用户核对后保存。</view></view>
+      <view class="security-tip">截图仅用于本次识别，不会自动保存为作业、通知或课程表附件；服务连接信息由云端安全管理。</view>
+      <view class="glossary-section">
+        <view class="glossary-heading"><view><view class="service-title">家庭常用词</view><view class="service-note">添加教材简称、作业本名称或班级常用缩写，只辅助辨认，不会自动改写清晰原文。</view></view><button wx:if="{{canEditSettings}}" class="glossary-add" bindtap="addRecognitionGlossaryEntry" disabled="{{saving}}">＋ 添加</button></view>
+        <view class="glossary-empty" wx:if="{{!settings.recognitionGlossary.length}}">暂未添加。遇到经常识别错的固定词语时再补充即可。</view>
+        <view class="glossary-row" wx:for="{{settings.recognitionGlossary}}" wx:key="index">
+          <input class="glossary-input term" value="{{item.term}}" maxlength="20" data-index="{{index}}" data-field="term" bindinput="onRecognitionGlossaryInput" disabled="{{!canEditSettings || saving}}" placeholder="例如：小单行本" />
+          <input class="glossary-input hint" value="{{item.hint}}" maxlength="60" data-index="{{index}}" data-field="hint" bindinput="onRecognitionGlossaryInput" disabled="{{!canEditSettings || saving}}" placeholder="提示：一种语文作业本" />
+          <button wx:if="{{canEditSettings}}" class="glossary-remove" data-index="{{index}}" bindtap="removeRecognitionGlossaryEntry" disabled="{{saving}}" aria-label="删除常用词">×</button>
+        </view>
+      </view>
+      <button wx:if="{{canEditSettings}}" class="primary-button panel-save" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存家庭常用词</button>
+      <view wx:else class="settings-readonly-note">当前账号可查看家庭常用词，修改需家庭管理员授权。</view>
     </view>
 
     <view class="settings-panel" wx:if="{{expandedSection === 'general'}}">
@@ -73,10 +81,17 @@
 
     <view class="settings-panel" wx:if="{{expandedSection === 'privacy'}}">
       <view class="panel-heading"><text>隐私与关于</text><button class="panel-close" data-section="privacy" bindtap="toggleSection" aria-label="收起隐私与关于">×</button></view>
-      <view class="service-note">成长搭档帮助家庭共同管理作业、通知、课程表、习惯与计划。AI 识别结果由用户核对和编辑后保存。</view>
+      <view class="service-note">成长搭档帮助家庭共同管理作业、通知、课程表、习惯与计划。图片识别结果由用户核对和编辑后保存。</view>
       <view wx:if="{{guestMode}}" class="guest-note">游客内容为本地虚构示例，不读取微信昵称、头像、手机号或家庭数据，不向云端保存体验操作。</view>
       <button class="ghost-button panel-save" bindtap="openPrivacyContract">查看用户隐私保护指引</button>
-      <view class="about">成长搭档 v1.0.4</view>
+      <view class="about">成长搭档 v1.0.5</view>
+    </view>
+
+    <view class="settings-panel" wx:if="{{expandedSection === 'data'}}">
+      <view class="panel-heading"><text>家庭数据管理</text><button class="panel-close" data-section="data" bindtap="toggleSection" aria-label="收起家庭数据管理">×</button></view>
+      <view class="data-rule"><view class="service-title">导出家庭数据</view><view class="service-note">仅家庭创建者可导出家庭成员、作业、通知、课程表、习惯、计划、科目和设置。导出文件不含 OpenID、手机号、服务密钥等内部身份或连接信息。</view><button wx:if="{{isCreator}}" class="primary-button panel-save" loading="{{exportingData}}" disabled="{{exportingData || leavingFamily}}" bindtap="exportFamilyData">生成并分享数据文件</button><view wx:else class="settings-readonly-note">如需导出，请联系家庭创建者操作。</view></view>
+      <view class="data-rule"><view class="service-title">退出当前家庭</view><view class="service-note">普通成员和孩子账号可主动退出。退出只解除自己的访问关系，不删除家庭共享数据；之后仍可重新申请加入。</view><button wx:if="{{!isCreator}}" class="danger-button panel-save" loading="{{leavingFamily}}" disabled="{{leavingFamily || exportingData}}" bindtap="leaveFamily">退出当前家庭</button><view wx:else class="settings-readonly-note">家庭创建者不能直接退出，以免家庭数据失去管理人。</view></view>
+      <view class="data-rule"><view class="service-title">删除家庭数据</view><view class="service-note">当前版本不提供一键删除家庭。删除会影响所有成员和历史记录，需先完成数据导出、移除其他成员，并具备可恢复备份与再次确认后才可开放。</view></view>
     </view>
   </block>
   <view class="empty" wx:if="{{loadFailed}}">资料暂未加载<button class="ghost-button" bindtap="load">重新加载</button></view>

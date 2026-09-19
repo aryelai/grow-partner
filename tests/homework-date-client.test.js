@@ -133,6 +133,21 @@ test("作业列表默认筛选北京时间今天且可按天或日期选择器�
   assert.equal(calls.filter((call) => call.action === "list").at(-1).payload.homeworkDate, "2026-10-08");
 });
 
+test("作业列表支持全部待办并在该模式取消单日限制", async () => {
+  const { page, calls } = loadPage("homework-list", {
+    _id: "homework-id", subject: "数学", homeworkDate: getBeijingDate(), title: "遗留作业", content: "",
+  });
+  page.setData({ semester: "2026下" });
+
+  await page.selectScope({ currentTarget: { dataset: { value: "pending" } } });
+
+  const request = calls.filter((call) => call.name === "homework" && call.action === "list").at(-1);
+  assert.equal(page.data.scope, "pending");
+  assert.equal(request.payload.semester, "2026下");
+  assert.equal(request.payload.status, "pending");
+  assert.equal(Object.hasOwn(request.payload, "homeworkDate"), false);
+});
+
 test("作业页面使用多行主题和醒目日期标签且空详细要求显示无", () => {
   for (const pageName of ["homework-edit", "homework-import"]) {
     const template = fs.readFileSync(path.resolve(__dirname, `../miniprogram/pages/${pageName}/${pageName}.wxml`), "utf8");
@@ -155,6 +170,8 @@ test("作业页面使用多行主题和醒目日期标签且空详细要求显�
   assert.match(listTemplate, /bindtap="changeDate"/);
   assert.doesNotMatch(listTemplate, /当前学期/);
   assert.match(listTemplate, /按科目筛选/);
+  assert.match(listTemplate, /全部待办/);
+  assert.match(listTemplate, /catchtap="changeLearningState"/);
   assert.match(listTemplate, /homework-label-value">\{\{homework.subject\}\}/);
   assert.match(listTemplate, /homework-label-value">\{\{homework.homeworkDateText\}\}/);
   assert.doesNotMatch(listTemplate, /homework-label-caption/);
